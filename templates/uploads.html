@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Status</title>
+</head>
+
+<body>
+
+<h1>Upload Status Dashboard</h1>
+
+<table border="1">
+    <tr>
+        <th>Upload ID</th>
+        <th>File</th>
+        <th>Status</th>
+    </tr>
+
+    {% for id, data in uploads.items() %}
+    <tr>
+        <td>{{ id }}</td>
+        <td>{{ data.filename }}</td>
+        <td>{{ data.status }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+</body>
+</html>

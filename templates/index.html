@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FileShare Pro — Dashboard</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --sidebar-width: 280px;
+            --sidebar-bg: #0b1121;
+            --sidebar-text: #94a3b8;
+            --sidebar-active: #1e293b;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-light: #e0e7ff;
+            --bg: #f1f5f9;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --radius: 12px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        /* Layout */
+        .app {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--sidebar-bg);
+            color: var(--sidebar-text);
+            position: fixed;
+            height: 100vh;
+            left: 0;
+            top: 0;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-right: 1px solid #1e293b;
+        }
+
+        .sidebar-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #1e293b;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--primary);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .brand {
+            font-weight: 700;
+            color: #f8fafc;
+            font-size: 1.125rem;
+            letter-spacing: -0.025em;
+        }
+
+        .brand span {
+            color: var(--primary);
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 1rem 0.75rem;
+            overflow-y: auto;
+        }
+
+        .nav-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .nav-label {
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+            padding: 0 0.75rem;
+            margin-bottom: 0.5rem;
+            opacity: 0.6;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.625rem 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            border: none;
+            background: none;
+            color: inherit;
+            width: 100%;
+            text-align: left;
+        }
+
+        .nav-item:hover {
+            background: var(--sidebar-active);
+            color: #e2e8f0;
+        }
+
+        .nav-item.active {
+            background: var(--sidebar-active);
+            color: var(--primary-light);
+            box-shadow: inset 2px 0 0 var(--primary);
+        }
+
+        .nav-icon {
+            width: 20px;
+            height: 20px;
+            opacity: 0.7;
+            flex-shrink: 0;
+        }
+
+        .nav-item.active .nav-icon { opacity: 1; }
+
+        /* Online Users Widget */
+        .online-widget {
+            margin-top: auto;
+            padding: 1rem 0.75rem;
+            border-top: 1px solid #1e293b;
+        }
+
+        .online-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+            opacity: 0.6;
+        }
+
+        .online-count {
+            background: var(--primary);
+            color: white;
+            padding: 0.125rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+
+        .user-chip {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8125rem;
+            padding: 0.375rem 0.5rem;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.03);
+        }
+
+        .user-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), #818cf8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.625rem;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .user-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #cbd5e1;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--success);
+            margin-left: auto;
+            flex-shrink: 0;
+            box-shadow: 0 0 0 2px var(--sidebar-bg);
+        }
+
+        /* Main Content */
+        .main {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 40;
+        }
+
+        .page-title h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            color: var(--text);
+        }
+
+        .page-title p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 0.125rem;
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.625rem 1.25rem;
+            border-radius: 10px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 1px 2px 0 rgb(99 102 241 / 0.2);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-secondary {
+            background: white;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg);
+        }
+
+        .mobile-toggle {
+            display: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0.5rem;
+            color: var(--text);
+        }
+
+        /* Content Grid */
+        .content {
+            padding: 2rem;
+            flex: 1;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            transition: box-shadow 0.2s;
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stat-card {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+        }
+
+        .stat-info h3 {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 1.875rem;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -0.025em;
+        }
+
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+
+        /* Upload Zone */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 3rem 2rem;
+            text-align: center;
+            background: var(--surface);
+            transition: all 0.2s;
+            cursor: pointer;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-zone.dragover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+
+        .upload-zone-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 1rem;
+            color: var(--primary);
+        }
+
+        .upload-zone h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text);
+        }
+
+        .upload-zone p {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .file-input {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        /* Files Table */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .section-header h2 {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .table-container {
+            background: var(--surface);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        thead {
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            padding: 0.875rem 1.5rem;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+        }
+
+        td {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+            vertical-align: middle;
+        }
+
+        tr:last-child td { border-bottom: none; }
+
+        tr:hover td { background: #f8fafc; }
+
+        .file-cell {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .file-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: var(--primary-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.75rem;
+            flex-shrink: 0;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .file-meta {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.125rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: #f1f5f9;
+            color: var(--text-secondary);
+        }
+
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-queued { background: #fef3c7; color: #92400e; }
+
+        .action-btn {
+            padding: 0.5rem;
+            border-radius: 6px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .action-btn:hover {
+            background: var(--bg);
+            color: var(--primary);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 1rem;
+            opacity: 0.3;
+        }
+
+        /* Upload Progress Overlay */
+        .uploads-panel {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            width: 360px;
+            max-width: calc(100vw - 2rem);
+            background: var(--surface);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            z-index: 45;
+            transform: translateY(calc(100% + 2rem));
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .uploads-panel.open { transform: translateY(0); }
+
+        .uploads-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+
+        .uploads-list {
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .upload-item {
+            padding: 0.875rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            background: var(--bg);
+        }
+
+        .upload-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-size: 0.8125rem;
+        }
+
+        .upload-filename {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 200px;
+        }
+
+        .upload-status {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        /* Toast */
+        .toast-container {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            z-index: 60;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .toast {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--primary);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-width: 300px;
+            max-width: 400px;
+            animation: slideIn 0.3s ease;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .toast.success { border-left-color: var(--success); }
+        .toast.error { border-left-color: var(--danger); }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Mobile Overlay */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 45;
+            backdrop-filter: blur(4px);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; }
+            .mobile-toggle { display: block; }
+            .sidebar-overlay.active { display: block; }
+            .grid { grid-template-columns: 1fr; }
+            .content { padding: 1rem; }
+            .topbar { padding: 1rem; }
+            .uploads-panel { width: calc(100% - 2rem); }
+            th, td { padding: 0.75rem 1rem; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo-icon">FS</div>
+            <div class="brand">File<span>Share</span></div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-label">Menu</div>
+                <button class="nav-item active" onclick="switchTab('dashboard')">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                    Dashboard
+                </button>
+                <button class="nav-item" onclick="switchTab('files')">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Files
+                </button>
+                <button class="nav-item" onclick="document.getElementById('fileInput').click()">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                    Upload
+                </button>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">System</div>
+                <button class="nav-item" onclick="toggleUploadPanel()">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    Queue Status
+                    <span class="online-count" id="queueCount" style="margin-left:auto;font-size:0.625rem;">0</span>
+                </button>
+            </div>
+        </nav>
+
+        <div class="online-widget">
+            <div class="online-header">
+                <span>Online Now</span>
+                <span class="online-count" id="onlineCount">0</span>
+            </div>
+            <div class="user-list" id="userList">
+                <div style="font-size:0.8125rem;opacity:0.5;padding:0.5rem;">Connecting...</div>
+            </div>
+        </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+    <!-- Main Content -->
+    <main class="main">
+        <header class="topbar">
+            <div style="display:flex;align-items:center;gap:1rem;">
+                <button class="mobile-toggle" onclick="toggleSidebar()">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <div class="page-title">
+                    <h1>Dashboard</h1>
+                    <p>Manage files and monitor activity</p>
+                </div>
+            </div>
+            <div class="topbar-actions">
+                <div id="connectionStatus" class="badge" style="display:flex;align-items:center;gap:0.5rem;">
+                    <span class="status-dot" style="position:static;background:var(--text-secondary);"></span>
+                    Offline
+                </div>
+                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    New Upload
+                </button>
+            </div>
+        </header>
+
+        <div class="content">
+            <!-- Stats -->
+            <div class="grid">
+                <div class="card stat-card">
+                    <div class="stat-info">
+                        <h3>Total Files</h3>
+                        <div class="stat-value" id="statFiles">{{ files|length }}</div>
+                    </div>
+                    <div class="stat-icon">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-info">
+                        <h3>Online Users</h3>
+                        <div class="stat-value" id="statUsers">0</div>
+                    </div>
+                    <div class="stat-icon" style="background:#dbeafe;color:#2563eb;">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                    </div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-info">
+                        <h3>Storage Used</h3>
+                        <div class="stat-value" id="statStorage">—</div>
+                    </div>
+                    <div class="stat-icon" style="background:#dcfce7;color:#16a34a;">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload Zone -->
+            <div class="upload-zone" id="uploadZone">
+                <input type="file" class="file-input" id="fileInput" onchange="handleFileSelect(this.files[0])">
+                <div class="upload-zone-icon">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                </div>
+                <h3>Drop files here or click to upload</h3>
+                <p>Supports any file type • Max size limited by server</p>
+            </div>
+
+            <!-- Files Table -->
+            <div class="section-header">
+                <h2>Recent Files</h2>
+                <span class="badge" id="fileCountBadge">{{ files|length }} items</span>
+            </div>
+
+            <div class="table-container">
+                {% if files %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>File</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th style="width:100px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fileTableBody">
+                        {% for file in files %}
+                        <tr data-filename="{{ file }}">
+                            <td>
+                                <div class="file-cell">
+                                    <div class="file-icon">{{ file.split('.')[-1][:3].upper() if '.' in file else 'FILE' }}</div>
+                                    <div>
+                                        <div class="file-name">{{ file }}</div>
+                                        <div class="file-meta">Available for download</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td><span class="badge">{{ file.split('.')[-1].upper() if '.' in file else 'UNKNOWN' }}</span></td>
+                            <td><span class="badge badge-success">Ready</span></td>
+                            <td>
+                                <a href="{{ url_for('download_file', filename=file) }}" class="action-btn" title="Download">
+                                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+                    <h3 style="font-weight:600;margin-bottom:0.5rem;color:var(--text);">No files yet</h3>
+                    <p>Upload your first file to get started</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Upload Progress Panel -->
+<div class="uploads-panel" id="uploadsPanel">
+    <div class="uploads-header">
+        <span>Upload Queue</span>
+        <button class="action-btn" onclick="toggleUploadPanel()" style="padding:0.25rem;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+    </div>
+    <div class="uploads-list" id="uploadsList">
+        <!-- Dynamic -->
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+    // User identity
+    const userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
+    sessionStorage.setItem('fs_username', userName);
+
+    // Socket.IO
+    const socket = io();
+
+    socket.on('connect', () => {
+        updateConnectionStatus(true);
+        socket.emit('user_online', { name: userName });
+    });
+
+    socket.on('disconnect', () => {
+        updateConnectionStatus(false);
+    });
+
+    socket.on('online_users', (users) => {
+        renderOnlineUsers(users);
+        document.getElementById('statUsers').textContent = Object.keys(users).length;
+    });
+
+    // UI State
+    function updateConnectionStatus(connected) {
+        const el = document.getElementById('connectionStatus');
+        if (connected) {
+            el.innerHTML = '<span class="status-dot" style="position:static;background:var(--success);"></span> Live';
+            el.className = 'badge badge-success';
+        } else {
+            el.innerHTML = '<span class="status-dot" style="position:static;background:var(--danger);"></span> Offline';
+            el.className = 'badge';
+            el.style.background = '#fee2e2';
+            el.style.color = '#991b1b';
+        }
+    }
+
+    function renderOnlineUsers(users) {
+        const container = document.getElementById('userList');
+        const count = Object.keys(users).length;
+        document.getElementById('onlineCount').textContent = count;
+
+        if (count === 0) {
+            container.innerHTML = '<div style="font-size:0.8125rem;opacity:0.5;padding:0.5rem;">No users online</div>';
+            return;
+        }
+
+        container.innerHTML = Object.entries(users).map(([id, data]) => `
+            <div class="user-chip" title="IP: ${data.ip || 'unknown'}">
+                <div class="user-avatar">${(data.name || 'A').charAt(0).toUpperCase()}</div>
+                <span class="user-name">${escapeHtml(data.name || 'Anonymous')}</span>
+                <span class="status-dot"></span>
+            </div>
+        `).join('');
+    }
+
+    // Upload Handling
+    const uploadZone = document.getElementById('uploadZone');
+    const uploadsPanel = document.getElementById('uploadsPanel');
+    const uploadsList = document.getElementById('uploadsList');
+    let uploadQueueCount = 0;
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, () => uploadZone.classList.add('dragover'), false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, () => uploadZone.classList.remove('dragover'), false);
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length) handleFileSelect(files[0]);
+    });
+
+    function handleFileSelect(file) {
+        if (!file) return;
+
+        const uploadId = 'upload-' + Math.random().toString(36).substr(2, 9);
+        addUploadItem(uploadId, file.name);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('uploader', userName);
+
+        fetch('/upload', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                updateUploadStatus(uploadId, 'queued', 100);
+                showToast('File queued for processing', 'success');
+                uploadQueueCount++;
+                updateQueueCount();
+
+                // Simulate progress for visual feedback (backend handles actual processing)
+                setTimeout(() => {
+                    addFileToTable(file.name);
+                    uploadQueueCount = Math.max(0, uploadQueueCount - 1);
+                    updateQueueCount();
+                    document.getElementById('statFiles').textContent =
+                        parseInt(document.getElementById('statFiles').textContent) + 1;
+                    document.getElementById('fileCountBadge').textContent =
+                        parseInt(document.getElementById('statFiles').textContent) + ' items';
+                }, 1500);
+            })
+            .catch(err => {
+                updateUploadStatus(uploadId, 'error', 0);
+                showToast('Upload failed: ' + err.message, 'error');
+            });
+    }
+
+    function addUploadItem(id, filename) {
+        if (!uploadsPanel.classList.contains('open')) toggleUploadPanel();
+
+        const div = document.createElement('div');
+        div.className = 'upload-item';
+        div.id = id;
+        div.innerHTML = `
+            <div class="upload-item-header">
+                <span class="upload-filename">${escapeHtml(filename)}</span>
+                <span class="upload-status" style="color:var(--warning);">Uploading...</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:40%;"></div></div>
+        `;
+        uploadsList.prepend(div);
+
+        // Animate to 40% then pause until server responds
+        setTimeout(() => {
+            const fill = div.querySelector('.progress-fill');
+            if (fill) fill.style.width = '60%';
+        }, 300);
+    }
+
+    function updateUploadStatus(id, status, percent) {
+        const item = document.getElementById(id);
+        if (!item) return;
+
+        const statusEl = item.querySelector('.upload-status');
+        const fill = item.querySelector('.progress-fill');
+
+        fill.style.width = percent + '%';
+
+        if (status === 'queued') {
+            statusEl.textContent = 'Queued';
+            statusEl.style.color = 'var(--warning)';
+        } else if (status === 'error') {
+            statusEl.textContent = 'Failed';
+            statusEl.style.color = 'var(--danger)';
+        }
+    }
+
+    function updateQueueCount() {
+        const el = document.getElementById('queueCount');
+        el.textContent = uploadQueueCount;
+        el.style.display = uploadQueueCount > 0 ? 'inline-flex' : 'none';
+    }
+
+    function addFileToTable(filename) {
+        const tbody = document.getElementById('fileTableBody');
+        const empty = document.querySelector('.empty-state');
+        if (empty) empty.remove();
+
+        if (!tbody) {
+            // Rebuild table if it was empty state
+            location.reload();
+            return;
+        }
+
+        const ext = filename.split('.').pop().toUpperCase();
+        const row = document.createElement('tr');
+        row.setAttribute('data-filename', filename);
+        row.innerHTML = `
+            <td>
+                <div class="file-cell">
+                    <div class="file-icon">${ext.slice(0,3)}</div>
+                    <div>
+                        <div class="file-name">${escapeHtml(filename)}</div>
+                        <div class="file-meta">Just uploaded</div>
+                    </div>
+                </div>
+            </td>
+            <td><span class="badge">${ext || 'FILE'}</span></td>
+            <td><span class="badge badge-queued">Queued</span></td>
+            <td>
+                <a href="/download/${encodeURIComponent(filename)}" class="action-btn" title="Download">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                </a>
+            </td>
+        `;
+        tbody.prepend(row);
+
+        // Flash animation
+        row.style.background = '#e0e7ff';
+        setTimeout(() => row.style.background = '', 1000);
+    }
+
+    // Mobile Sidebar
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('overlay').classList.toggle('active');
+    }
+
+    function toggleUploadPanel() {
+        document.getElementById('uploadsPanel').classList.toggle('open');
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        // In a multi-page app this would route; for SPA template we keep single view
+    }
+
+    // Utilities
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                ${type === 'success'
+                    ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>'
+                    : '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>'}
+            </svg>
+            ${escapeHtml(message)}
+        `;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(100%)';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+    // Estimate storage (client-side approximation since backend doesn't expose size endpoint)
+    function estimateStorage() {
+        // Placeholder: in production, fetch from an API endpoint
+        const files = document.querySelectorAll('#fileTableBody tr');
+        const count = files.length;
+        document.getElementById('statStorage').textContent = count > 0 ? '~' + (count * 2.4).toFixed(1) + ' MB' : '0 MB';
+    }
+    estimateStorage();
+</script>
+
+</body>
+</html>

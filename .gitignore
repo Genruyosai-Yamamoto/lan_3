@@ -1,0 +1,8 @@
+logs/*
+*.log
+/logs
+/uploads
+venv/*
+__pycache__/*
+*.pyc
+venv
