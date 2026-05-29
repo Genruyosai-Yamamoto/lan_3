@@ -5,9 +5,11 @@ import threading
 import uuid
 from flask_socketio import SocketIO, emit
 from flask_sqlalchemy import SQLAlchemy
-from data import db, Message
+from data import db, Message, Reaction
 from workers import upload_worker
 from utils import log_activity
+from datetime import datetime
+
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -17,12 +19,14 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 
 UPLOAD_FOLDER = "uploads"
+AUDIO_FOLDER = "uploads/audio"
 
+os.makedirs(AUDIO_FOLDER, exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs("logs", exist_ok=True)
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
+app.config["AUDIO_FOLDER"] = AUDIO_FOLDER
 # =========================
 # STORAGE
 # =========================
@@ -201,23 +205,181 @@ def chat_page():
     messages = Message.query.order_by(Message.timestamp.asc()).all()
     return render_template("chat.html", messages=messages)
 
-@socketio.on("send_message")
-def handle_message(data):
+@app.route("/upload_audio", methods=["POST"])
+def upload_audio():
+
+    audio = request.files["audio"]
+
+    filename = f"{uuid.uuid4()}.webm"
+
+    filepath = os.path.join(
+        "uploads/audio",
+        filename
+    )
+
+    audio.save(filepath)
 
     msg = Message(
-        user=data.get("user", "Anonymous"),
-        text=data.get("text")
+        user=request.form.get("user", "Anonymous"),
+        message_type="audio",
+        content=filepath
     )
 
     db.session.add(msg)
     db.session.commit()
 
     socketio.emit("new_message", {
+        "id": msg.id,
         "user": msg.user,
-        "text": msg.text,
+        "type": msg.message_type,
+        "content": msg.content,
+        "time": msg.timestamp.strftime("%H:%M")
+    })
+
+    return {"success": True}
+
+@app.route("/audio/<filename>")
+def get_audio(filename):
+    return send_from_directory("uploads/audio", filename)
+
+@socketio.on("send_message")
+def handle_message(data):
+
+    msg = Message(
+        user=data.get("user", "Anonymous"),
+        message_type="text",
+        content=data.get("text")
+    )
+
+    db.session.add(msg)
+    db.session.commit()
+
+    socketio.emit("new_message", {
+        "id": msg.id,
+        "user": msg.user,
+        "type": msg.message_type,
+        "content": msg.content,
         "time": msg.timestamp.strftime("%H:%M")
     })
     
+
+@socketio.on("edit_message")
+def handle_edit_message(data):
+
+    message_id = data.get("message_id")
+
+    new_content = data.get("content")
+
+    user = data.get("user")
+
+    msg = Message.query.get(message_id)
+
+    if not msg:
+        return
+
+    if msg.message_type != "text":
+        return
+
+    if msg.user != user:
+        return
+
+    msg.content = new_content
+    msg.edited = True
+    msg.edited_at = datetime.utcnow()
+
+    db.session.commit()
+
+    socketio.emit("message_edited", {
+        "id": msg.id,
+        "content": msg.content,
+        "edited": True,
+        "edited_at": msg.edited_at.strftime("%H:%M")
+    })
+
+@socketio.on("delete_message")
+def handle_delete_message(data):
+
+    message_id = data.get("message_id")
+    username = data.get("user")
+
+    msg = Message.query.get(message_id)
+
+    if not msg:
+        return
+
+    if msg.user != username:
+        return
+
+    msg.deleted = True
+    msg.deleted_at = datetime.utcnow()
+
+    db.session.commit()
+
+    socketio.emit("message_deleted", {
+        "id": msg.id,
+        "deleted": True,
+        "deleted_at": msg.deleted_at.strftime("%H:%M")
+    })
+
+@socketio.on("add_reaction")
+def handle_reaction(data):
+
+    message_id = data.get("message_id")
+    emoji = data.get("emoji")
+    username = data.get("user")
+
+    existing = Reaction.query.filter_by(
+        message_id=message_id,
+        user=username,
+        emoji=emoji
+    ).first()
+
+    if existing:
+        return
+
+    reaction = Reaction(
+        message_id=message_id,
+        user=username,
+        emoji=emoji
+    )
+
+    db.session.add(reaction)
+    db.session.commit()
+
+    socketio.emit(
+        "reaction_added",
+        {
+            "message_id": message_id,
+            "emoji": emoji,
+            "user": username
+        }
+    )
+
+@socketio.on("remove_reaction")
+def handle_remove_reaction(data):
+
+    reaction = Reaction.query.filter_by(
+        message_id=data["message_id"],
+        user=data["user"],
+        emoji=data["emoji"]
+    ).first()
+
+    if not reaction:
+        return
+
+    db.session.delete(reaction)
+    db.session.commit()
+
+    socketio.emit(
+        "reaction_removed",
+        {
+            "message_id": data["message_id"],
+            "emoji": data["emoji"],
+            "user": data["user"]
+        }
+    )
+
+
 # =========================
 # RUN SERVER
 # =========================
