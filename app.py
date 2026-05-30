@@ -8,7 +8,7 @@ from flask_sqlalchemy import SQLAlchemy
 from data import db, Message, Reaction, PrivateMessage, Conversation, UserKey, PrivateReaction
 from workers import upload_worker, get_dm_room
 from utils import log_activity
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 
 
 app = Flask(__name__)
