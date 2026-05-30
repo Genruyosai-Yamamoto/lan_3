@@ -1,17 +1,18 @@
-from flask import Flask, render_template, request, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, send_from_directory, session, abort
 import os
 import queue
 import threading
 import uuid
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room
 from flask_sqlalchemy import SQLAlchemy
-from data import db, Message, Reaction
-from workers import upload_worker
+from data import db, Message, Reaction, PrivateMessage, Conversation, UserKey, PrivateReaction
+from workers import upload_worker, get_dm_room
 from utils import log_activity
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 app = Flask(__name__)
+app.secret_key = "lan-e2ee-secret-key-123456"
 socketio = SocketIO(app)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///chat.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -221,6 +222,8 @@ def upload_audio():
 
     msg = Message(
         user=request.form.get("user", "Anonymous"),
+        sender_sid=request.form.get("sid"),
+        ip_address=request.remote_addr,
         message_type="audio",
         content=filepath
     )
@@ -247,6 +250,8 @@ def handle_message(data):
 
     msg = Message(
         user=data.get("user", "Anonymous"),
+        sender_sid=request.sid,
+        ip_address=request.remote_addr,
         message_type="text",
         content=data.get("text")
     )
@@ -267,34 +272,41 @@ def handle_message(data):
 def handle_edit_message(data):
 
     message_id = data.get("message_id")
-
     new_content = data.get("content")
 
-    user = data.get("user")
-
-    msg = Message.query.get(message_id)
+    msg = db.session.get(Message, message_id)
 
     if not msg:
+        return
+
+    if msg.deleted:
         return
 
     if msg.message_type != "text":
         return
 
-    if msg.user != user:
+    # Owner verification
+    if msg.sender_sid != request.sid:
+        emit("error", {
+            "message": "You can only edit your own messages."
+        })
         return
 
-    msg.content = new_content
+    msg.content = new_content.strip()
     msg.edited = True
-    msg.edited_at = datetime.utcnow()
+    msg.edited_at = datetime.now(timezone.utc)
 
     db.session.commit()
 
-    socketio.emit("message_edited", {
-        "id": msg.id,
-        "content": msg.content,
-        "edited": True,
-        "edited_at": msg.edited_at.strftime("%H:%M")
-    })
+    socketio.emit(
+        "message_edited",
+        {
+            "id": msg.id,
+            "content": msg.content,
+            "edited": True,
+            "edited_at": msg.edited_at.strftime("%H:%M")
+        }
+    )
 
 @socketio.on("delete_message")
 def handle_delete_message(data):
@@ -302,16 +314,19 @@ def handle_delete_message(data):
     message_id = data.get("message_id")
     username = data.get("user")
 
-    msg = Message.query.get(message_id)
+    msg = db.session.get(Message, message_id)
 
     if not msg:
         return
 
-    if msg.user != username:
+    if msg.sender_sid != request.sid:
+        emit("error", {
+            "message": "You can only delete your own messages."
+        })
         return
 
     msg.deleted = True
-    msg.deleted_at = datetime.utcnow()
+    msg.deleted_at = datetime.now(timezone.utc)
 
     db.session.commit()
 
@@ -379,10 +394,346 @@ def handle_remove_reaction(data):
         }
     )
 
+@app.route("/set_username", methods=["POST"])
+def set_username():
+    data = request.json or {}
+    username = data.get("username")
+    if username:
+        session["username"] = username
+        return {"success": True}
+    return {"success": False, "error": "Username is required"}, 400
 
-# =========================
-# RUN SERVER
-# =========================
+@app.route("/api/save_public_key", methods=["POST"])
+def save_public_key():
+    data = request.json or {}
+    username = data.get("username")
+    public_key = data.get("public_key")
+    if not username or not public_key:
+        return {"error": "Missing username or public_key"}, 400
+    
+    user_key = UserKey.query.filter_by(username=username).first()
+    if not user_key:
+        user_key = UserKey(username=username, public_key=public_key)
+        db.session.add(user_key)
+    else:
+        user_key.public_key = public_key
+    db.session.commit()
+    return {"success": True}
+
+@app.route("/api/get_public_key/<username>")
+def get_public_key(username):
+    user_key = UserKey.query.filter_by(username=username).first()
+    if not user_key:
+        return {"error": "User public key not found"}, 404
+    return {"username": username, "public_key": user_key.public_key}
+
+@app.route("/upload_private_audio", methods=["POST"])
+def upload_private_audio():
+    audio = request.files["audio"]
+    sender = request.form.get("sender")
+    receiver = request.form.get("receiver")
+    conversation_id = request.form.get("conversation_id")
+
+    if not conversation_id:
+        return {"error": "Missing conversation_id"}, 400
+
+    filename = f"{uuid.uuid4()}.webm"
+    filepath = os.path.join("uploads/audio", filename)
+    audio.save(filepath)
+
+    msg = PrivateMessage(
+        conversation_id=int(conversation_id),
+        sender=sender,
+        receiver=receiver,
+        message_type="audio",
+        content=filepath
+    )
+    db.session.add(msg)
+    db.session.commit()
+
+    room = get_dm_room(sender, receiver)
+    socketio.emit(
+        "new_private_message",
+        {
+            "id": msg.id,
+            "sender": msg.sender,
+            "receiver": msg.receiver,
+            "type": msg.message_type,
+            "content": msg.content,
+            "time": msg.timestamp.strftime("%H:%M")
+        },
+        room=room
+    )
+    return {"success": True}
+
+@app.route("/dm")
+def dm():
+    username = session.get("username") or request.cookies.get("username")
+    if username and not session.get("username"):
+        session["username"] = username
+
+    online = list(online_users.values())
+
+    # remove self from list
+    if username:
+        online = [u for u in online if u.get("name") != username]
+
+    files = os.listdir(UPLOAD_FOLDER)
+    return render_template(
+        "dm.html",
+        files=files,
+        online_users=online,
+        user=username
+    )
+
+@app.route("/dm/<int:conversation_id>")
+def dm_chat(conversation_id):
+    username = session.get("username") or request.cookies.get("username")
+    if username and not session.get("username"):
+        session["username"] = username
+
+    if not username:
+        return redirect(url_for("index"))
+
+    convo = Conversation.query.get(conversation_id)
+    if not convo:
+        return abort(404)
+
+    # 🔒 security: only participants can access
+    if username not in [convo.user1, convo.user2]:
+        return abort(403)
+
+    messages = PrivateMessage.query.filter_by(
+        conversation_id=conversation_id
+    ).order_by(PrivateMessage.timestamp.asc()).all()
+
+    partner = convo.user2 if convo.user1 == username else convo.user1
+
+    # Load file lists if required by the page structure
+    files = os.listdir(UPLOAD_FOLDER)
+
+    return render_template(
+        "dm.html",
+        messages=messages,
+        conversation=convo,
+        partner=partner,
+        user=username,
+        files=files
+    )
+
+@app.route("/dm/start_dm/<target_user>")
+def start_dm(target_user):
+    username = session.get("username") or request.cookies.get("username")
+    if username and not session.get("username"):
+        session["username"] = username
+
+    if not username:
+        return redirect(url_for("index"))
+
+    # check if conversation already exists
+    convo = Conversation.query.filter(
+        ((Conversation.user1 == username) & (Conversation.user2 == target_user)) |
+        ((Conversation.user1 == target_user) & (Conversation.user2 == username))
+    ).first()
+
+    # create if not exists
+    if not convo:
+        convo = Conversation(
+            user1=username,
+            user2=target_user
+        )
+        db.session.add(convo)
+        db.session.commit()
+
+    return redirect(url_for("dm_chat", conversation_id=convo.id))
+
+@socketio.on("typing")
+def typing(data):
+    room = get_dm_room(
+        data["sender"],
+        data["receiver"]
+    )
+    emit(
+        "user_typing",
+        {
+            "user": data["sender"]
+        },
+        room=room,
+        include_self=False
+    )
+
+@socketio.on("join_dm")
+def join_dm(data):
+    room = get_dm_room(
+        data["user1"],
+        data["user2"]
+    )
+    join_room(room)
+
+@socketio.on("send_private_message")
+def send_private_message(data):
+    room = get_dm_room(
+        data["sender"],
+        data["receiver"]
+    )
+    msg = PrivateMessage(
+        conversation_id=data.get("conversation_id") or 1,  # fallback if needed, but client should send it
+        sender=data["sender"],
+        receiver=data["receiver"],
+        message_type="text",
+        content=data["message"]
+    )
+    db.session.add(msg)
+    db.session.commit()
+
+    # If the conversation_id is not passed, let's fetch it
+    if not data.get("conversation_id"):
+        convo = Conversation.query.filter(
+            ((Conversation.user1 == msg.sender) & (Conversation.user2 == msg.receiver)) |
+            ((Conversation.user1 == msg.receiver) & (Conversation.user2 == msg.sender))
+        ).first()
+        if convo:
+            msg.conversation_id = convo.id
+            db.session.commit()
+
+    socketio.emit(
+        "new_private_message",
+        {
+            "id": msg.id,
+            "sender": msg.sender,
+            "receiver": msg.receiver,
+            "content": msg.content,
+            "time": msg.timestamp.strftime("%H:%M")
+        },
+        room=room
+    )
+
+@socketio.on("edit_private_message")
+def handle_edit_private_message(data):
+    message_id = data.get("message_id")
+    new_content = data.get("content")
+    
+    msg = db.session.get(PrivateMessage, message_id)
+    if not msg:
+        return
+        
+    username = session.get("username") or request.cookies.get("username")
+    if msg.sender != username:
+        emit("error", {"message": "You can only edit your own messages."})
+        return
+        
+    msg.content = new_content.strip()
+    msg.edited = True
+    db.session.commit()
+    
+    room = get_dm_room(msg.sender, msg.receiver)
+    socketio.emit(
+        "private_message_edited",
+        {
+            "id": msg.id,
+            "content": msg.content,
+            "edited": True
+        },
+        room=room
+    )
+
+@socketio.on("delete_private_message")
+def handle_delete_private_message(data):
+    message_id = data.get("message_id")
+    
+    msg = db.session.get(PrivateMessage, message_id)
+    if not msg:
+        return
+        
+    username = session.get("username") or request.cookies.get("username")
+    if msg.sender != username:
+        emit("error", {"message": "You can only delete your own messages."})
+        return
+        
+    msg.deleted = True
+    db.session.commit()
+    
+    room = get_dm_room(msg.sender, msg.receiver)
+    socketio.emit(
+        "private_message_deleted",
+        {
+            "id": msg.id,
+            "deleted": True
+        },
+        room=room
+    )
+
+@socketio.on("add_private_reaction")
+def handle_private_reaction(data):
+    message_id = data.get("message_id")
+    emoji = data.get("emoji")
+    username = data.get("user")
+
+    msg = db.session.get(PrivateMessage, message_id)
+    if not msg:
+        return
+
+    existing = PrivateReaction.query.filter_by(
+        message_id=message_id,
+        user=username,
+        emoji=emoji
+    ).first()
+
+    if existing:
+        return
+
+    reaction = PrivateReaction(
+        message_id=message_id,
+        user=username,
+        emoji=emoji
+    )
+    db.session.add(reaction)
+    db.session.commit()
+
+    room = get_dm_room(msg.sender, msg.receiver)
+    socketio.emit(
+        "private_reaction_added",
+        {
+            "message_id": message_id,
+            "emoji": emoji,
+            "user": username
+        },
+        room=room
+    )
+
+@socketio.on("remove_private_reaction")
+def handle_remove_private_reaction(data):
+    message_id = data.get("message_id")
+    emoji = data.get("emoji")
+    username = data.get("user")
+
+    msg = db.session.get(PrivateMessage, message_id)
+    if not msg:
+        return
+
+    reaction = PrivateReaction.query.filter_by(
+        message_id=message_id,
+        user=username,
+        emoji=emoji
+    ).first()
+
+    if not reaction:
+        return
+
+    db.session.delete(reaction)
+    db.session.commit()
+
+    room = get_dm_room(msg.sender, msg.receiver)
+    socketio.emit(
+        "private_reaction_removed",
+        {
+            "message_id": message_id,
+            "emoji": emoji,
+            "user": username
+        },
+        room=room
+    )
+
 
 if __name__ == "__main__":
     with app.app_context():

@@ -868,6 +868,10 @@
                     <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
                     Chat
                 </a>
+                <a href="{{ url_for('dm') }}" class="nav-item">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                   Direct Chat
+                </a>
             </div>
         </nav>
 
@@ -996,6 +1000,37 @@
 <script>
     const userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
     sessionStorage.setItem('fs_username', userName);
+    document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
+
+    // E2EE Key Registration
+    async function ensureEncryptionKeys(name) {
+        if (!localStorage.getItem('ecdh_private_key') || !localStorage.getItem('ecdh_public_key')) {
+            try {
+                const keyPair = await window.crypto.subtle.generateKey(
+                    { name: "ECDH", namedCurve: "P-256" },
+                    true,
+                    ["deriveKey", "deriveBits"]
+                );
+                const pub = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+                const priv = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
+                localStorage.setItem('ecdh_public_key', JSON.stringify(pub));
+                localStorage.setItem('ecdh_private_key', JSON.stringify(priv));
+            } catch (e) {
+                console.error("Failed to generate keys:", e);
+                return;
+            }
+        }
+        try {
+            await fetch('/api/save_public_key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: name, public_key: localStorage.getItem('ecdh_public_key') })
+            });
+        } catch (e) {
+            console.error("Failed to save public key:", e);
+        }
+    }
+    ensureEncryptionKeys(userName);
 
     const messageReactions = {};
     let mediaRecorder = null;

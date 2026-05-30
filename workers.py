@@ -37,3 +37,9 @@ def upload_worker(upload_queue, upload_registry, socketio):
             upload_registry[upload_id]["status"] = "failed"
 
         upload_queue.task_done()
+
+def get_dm_room(user1, user2):
+
+    users = sorted([user1, user2])
+
+    return f"dm_{users[0]}_{users[1]}"
