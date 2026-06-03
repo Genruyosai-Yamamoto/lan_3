@@ -33,6 +33,12 @@ class Message(db.Model):
         db.DateTime,
         nullable=True
     )
+    reply_to_id = db.Column(
+        db.Integer,
+        db.ForeignKey("message.id"),
+        nullable=True
+    )
+    reply_to = db.relationship("Message", remote_side=[id], backref="replies")
 
 class Conversation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -69,6 +75,12 @@ class PrivateMessage(db.Model):
 
     edited = db.Column(db.Boolean, default=False)
     deleted = db.Column(db.Boolean, default=False)
+    reply_to_id = db.Column(
+        db.Integer,
+        db.ForeignKey("private_message.id"),
+        nullable=True
+    )
+    reply_to = db.relationship("PrivateMessage", remote_side=[id], backref="replies")
 
 class Reaction(db.Model):
 

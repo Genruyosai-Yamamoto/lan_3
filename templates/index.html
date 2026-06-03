@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FileShare Pro — Dashboard</title>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         :root {
             --sidebar-width: 280px;
@@ -39,21 +39,15 @@
             overflow-x: hidden;
         }
 
-        /* Layout */
-        .app {
-            display: flex;
-            min-height: 100vh;
-        }
+        .app { display: flex; min-height: 100vh; }
 
-        /* Sidebar */
         .sidebar {
             width: var(--sidebar-width);
             background: var(--sidebar-bg);
             color: var(--sidebar-text);
             position: fixed;
             height: 100vh;
-            left: 0;
-            top: 0;
+            left: 0; top: 0;
             z-index: 50;
             display: flex;
             flex-direction: column;
@@ -64,499 +58,200 @@
         .sidebar-header {
             padding: 1.5rem;
             border-bottom: 1px solid #1e293b;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            display: flex; align-items: center; gap: 0.75rem;
         }
 
         .logo-icon {
-            width: 36px;
-            height: 36px;
+            width: 36px; height: 36px;
             background: var(--primary);
             border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 700;
-            font-size: 1.1rem;
-            flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: 700; font-size: 1.1rem; flex-shrink: 0;
         }
 
-        .brand {
-            font-weight: 700;
-            color: #f8fafc;
-            font-size: 1.125rem;
-            letter-spacing: -0.025em;
-        }
+        .brand { font-weight: 700; color: #f8fafc; font-size: 1.125rem; letter-spacing: -0.025em; }
+        .brand span { color: var(--primary); }
 
-        .brand span {
-            color: var(--primary);
-        }
-
-        .sidebar-nav {
-            flex: 1;
-            padding: 1rem 0.75rem;
-            overflow-y: auto;
-        }
-
-        .nav-section {
-            margin-bottom: 1.5rem;
-        }
+        .sidebar-nav { flex: 1; padding: 1rem 0.75rem; overflow-y: auto; }
+        .nav-section { margin-bottom: 1.5rem; }
 
         .nav-label {
-            font-size: 0.6875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 600;
-            padding: 0 0.75rem;
-            margin-bottom: 0.5rem;
-            opacity: 0.6;
+            font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em;
+            font-weight: 600; padding: 0 0.75rem; margin-bottom: 0.5rem; opacity: 0.6;
         }
 
         .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.625rem 0.75rem;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 0.875rem;
-            font-weight: 500;
-            margin-bottom: 0.25rem;
-            border: none;
-            background: none;
-            color: inherit;
-            width: 100%;
-            text-align: left;
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.625rem 0.75rem; border-radius: 8px; cursor: pointer;
+            transition: all 0.2s; font-size: 0.875rem; font-weight: 500;
+            margin-bottom: 0.25rem; border: none; background: none;
+            color: inherit; width: 100%; text-align: left; text-decoration: none;
         }
 
-        .nav-item:hover {
-            background: var(--sidebar-active);
-            color: #e2e8f0;
-        }
+        .nav-item:hover { background: var(--sidebar-active); color: #e2e8f0; }
+        .nav-item.active { background: var(--sidebar-active); color: var(--primary-light); box-shadow: inset 2px 0 0 var(--primary); }
 
-        .nav-item.active {
-            background: var(--sidebar-active);
-            color: var(--primary-light);
-            box-shadow: inset 2px 0 0 var(--primary);
-        }
-
-        .nav-icon {
-            width: 20px;
-            height: 20px;
-            opacity: 0.7;
-            flex-shrink: 0;
-        }
-
+        .nav-icon { width: 20px; height: 20px; opacity: 0.7; flex-shrink: 0; }
         .nav-item.active .nav-icon { opacity: 1; }
 
-        /* Online Users Widget */
         .online-widget {
-            margin-top: auto;
-            padding: 1rem 0.75rem;
-            border-top: 1px solid #1e293b;
+            margin-top: auto; padding: 1rem 0.75rem; border-top: 1px solid #1e293b;
         }
 
         .online-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 0.75rem;
-            font-size: 0.6875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 600;
-            opacity: 0.6;
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 0.75rem; font-size: 0.6875rem; text-transform: uppercase;
+            letter-spacing: 0.05em; font-weight: 600; opacity: 0.6;
         }
 
         .online-count {
-            background: var(--primary);
-            color: white;
-            padding: 0.125rem 0.5rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 700;
+            background: var(--primary); color: white;
+            padding: 0.125rem 0.5rem; border-radius: 9999px;
+            font-size: 0.75rem; font-weight: 700;
         }
 
-        .user-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            max-height: 160px;
-            overflow-y: auto;
-        }
+        .user-list { display: flex; flex-direction: column; gap: 0.5rem; max-height: 160px; overflow-y: auto; }
 
         .user-chip {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.8125rem;
-            padding: 0.375rem 0.5rem;
-            border-radius: 6px;
-            background: rgba(255,255,255,0.03);
+            display: flex; align-items: center; gap: 0.5rem;
+            font-size: 0.8125rem; padding: 0.375rem 0.5rem;
+            border-radius: 6px; background: rgba(255,255,255,0.03);
         }
 
         .user-avatar {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
+            width: 24px; height: 24px; border-radius: 50%;
             background: linear-gradient(135deg, var(--primary), #818cf8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.625rem;
-            font-weight: 700;
-            color: white;
-            flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.625rem; font-weight: 700; color: white; flex-shrink: 0;
         }
 
-        .user-name {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: #cbd5e1;
-        }
+        .user-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #cbd5e1; }
 
         .status-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--success);
-            margin-left: auto;
-            flex-shrink: 0;
-            box-shadow: 0 0 0 2px var(--sidebar-bg);
+            width: 6px; height: 6px; border-radius: 50%; background: var(--success);
+            margin-left: auto; flex-shrink: 0; box-shadow: 0 0 0 2px var(--sidebar-bg);
         }
 
-        /* Main Content */
-        .main {
-            flex: 1;
-            margin-left: var(--sidebar-width);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
+        .main { flex: 1; margin-left: var(--sidebar-width); min-height: 100vh; display: flex; flex-direction: column; }
 
         .topbar {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            padding: 1rem 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 40;
+            background: var(--surface); border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 40;
         }
 
-        .page-title h1 {
-            font-size: 1.5rem;
-            font-weight: 700;
-            letter-spacing: -0.025em;
-            color: var(--text);
-        }
+        .page-title h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+        .page-title p { font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.125rem; }
 
-        .page-title p {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-            margin-top: 0.125rem;
-        }
-
-        .topbar-actions {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
+        .topbar-actions { display: flex; align-items: center; gap: 1rem; }
 
         .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.625rem 1.25rem;
-            border-radius: 10px;
-            font-size: 0.875rem;
-            font-weight: 600;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-decoration: none;
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.625rem 1.25rem; border-radius: 10px; font-size: 0.875rem;
+            font-weight: 600; border: none; cursor: pointer; transition: all 0.2s; text-decoration: none;
         }
 
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-            box-shadow: 0 1px 2px 0 rgb(99 102 241 / 0.2);
-        }
+        .btn-primary { background: var(--primary); color: white; box-shadow: 0 1px 2px 0 rgb(99 102 241 / 0.2); }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+        .btn-secondary { background: white; color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--bg); }
 
-        .btn-primary:hover {
-            background: var(--primary-hover);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-lg);
-        }
+        .mobile-toggle { display: none; background: none; border: none; cursor: pointer; padding: 0.5rem; color: var(--text); }
 
-        .btn-secondary {
-            background: white;
-            color: var(--text);
-            border: 1px solid var(--border);
-        }
+        .content { padding: 2rem; flex: 1; }
 
-        .btn-secondary:hover {
-            background: var(--bg);
-        }
-
-        .mobile-toggle {
-            display: none;
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 0.5rem;
-            color: var(--text);
-        }
-
-        /* Content Grid */
-        .content {
-            padding: 2rem;
-            flex: 1;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
 
         .card {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            padding: 1.5rem;
-            box-shadow: var(--shadow);
-            transition: box-shadow 0.2s;
+            background: var(--surface); border-radius: var(--radius);
+            border: 1px solid var(--border); padding: 1.5rem;
+            box-shadow: var(--shadow); transition: box-shadow 0.2s;
         }
+        .card:hover { box-shadow: var(--shadow-lg); }
 
-        .card:hover {
-            box-shadow: var(--shadow-lg);
-        }
-
-        .stat-card {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-        }
-
-        .stat-info h3 {
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: var(--text-secondary);
-            margin-bottom: 0.5rem;
-        }
-
-        .stat-value {
-            font-size: 1.875rem;
-            font-weight: 700;
-            color: var(--text);
-            letter-spacing: -0.025em;
-        }
+        .stat-card { display: flex; align-items: flex-start; justify-content: space-between; }
+        .stat-info h3 { font-size: 0.875rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 0.5rem; }
+        .stat-value { font-size: 1.875rem; font-weight: 700; letter-spacing: -0.025em; }
 
         .stat-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--primary-light);
-            color: var(--primary);
+            width: 40px; height: 40px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--primary-light); color: var(--primary);
         }
 
-        /* Upload Zone */
         .upload-zone {
-            border: 2px dashed var(--border);
-            border-radius: var(--radius);
-            padding: 3rem 2rem;
-            text-align: center;
-            background: var(--surface);
-            transition: all 0.2s;
-            cursor: pointer;
-            margin-bottom: 2rem;
-            position: relative;
-            overflow: hidden;
+            border: 2px dashed var(--border); border-radius: var(--radius);
+            padding: 3rem 2rem; text-align: center; background: var(--surface);
+            transition: all 0.2s; cursor: pointer; margin-bottom: 2rem;
+            position: relative; overflow: hidden;
         }
 
-        .upload-zone.dragover {
-            border-color: var(--primary);
-            background: var(--primary-light);
-        }
+        .upload-zone.dragover { border-color: var(--primary); background: var(--primary-light); }
 
-        .upload-zone-icon {
-            width: 48px;
-            height: 48px;
-            margin: 0 auto 1rem;
-            color: var(--primary);
-        }
+        .upload-zone-icon { width: 48px; height: 48px; margin: 0 auto 1rem; color: var(--primary); }
+        .upload-zone h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+        .upload-zone p { font-size: 0.875rem; color: var(--text-secondary); }
 
-        .upload-zone h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--text);
-        }
+        .file-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
-        .upload-zone p {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-        }
-
-        .file-input {
-            position: absolute;
-            inset: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
-
-        /* Files Table */
-        .section-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1rem;
-        }
-
-        .section-header h2 {
-            font-size: 1.125rem;
-            font-weight: 600;
-        }
+        .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+        .section-header h2 { font-size: 1.125rem; font-weight: 600; }
 
         .table-container {
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow);
-            overflow: hidden;
+            background: var(--surface); border-radius: var(--radius);
+            border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.875rem;
-        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
 
-        thead {
-            background: var(--bg);
-            border-bottom: 1px solid var(--border);
-        }
+        thead { background: var(--bg); border-bottom: 1px solid var(--border); }
 
         th {
-            padding: 0.875rem 1.5rem;
-            text-align: left;
-            font-weight: 600;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
+            padding: 0.875rem 1.5rem; text-align: left; font-weight: 600;
+            font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);
         }
 
-        td {
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid var(--border);
-            color: var(--text);
-            vertical-align: middle;
-        }
-
+        td { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
-
         tr:hover td { background: #f8fafc; }
 
-        .file-cell {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
+        .file-cell { display: flex; align-items: center; gap: 0.75rem; }
 
         .file-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            background: var(--primary-light);
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 0.75rem;
-            flex-shrink: 0;
+            width: 36px; height: 36px; border-radius: 8px;
+            background: var(--primary-light); color: var(--primary);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 0.75rem; flex-shrink: 0;
         }
 
-        .file-name {
-            font-weight: 500;
-            color: var(--text);
-        }
-
-        .file-meta {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            margin-top: 0.125rem;
-        }
+        .file-name { font-weight: 500; }
+        .file-meta { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.125rem; }
 
         .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            background: #f1f5f9;
-            color: var(--text-secondary);
+            display: inline-flex; align-items: center; padding: 0.25rem 0.75rem;
+            border-radius: 9999px; font-size: 0.75rem; font-weight: 600;
+            background: #f1f5f9; color: var(--text-secondary);
         }
 
         .badge-success { background: #d1fae5; color: #065f46; }
         .badge-queued { background: #fef3c7; color: #92400e; }
 
         .action-btn {
-            padding: 0.5rem;
-            border-radius: 6px;
-            border: none;
-            background: none;
-            cursor: pointer;
-            color: var(--text-secondary);
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
+            padding: 0.5rem; border-radius: 6px; border: none; background: none;
+            cursor: pointer; color: var(--text-secondary); transition: all 0.2s;
+            display: inline-flex; align-items: center; justify-content: center;
+            text-decoration: none;
         }
+        .action-btn:hover { background: var(--bg); color: var(--primary); }
 
-        .action-btn:hover {
-            background: var(--bg);
-            color: var(--primary);
-        }
+        .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text-secondary); }
+        .empty-state svg { width: 64px; height: 64px; margin: 0 auto 1rem; opacity: 0.3; }
 
-        .empty-state {
-            text-align: center;
-            padding: 4rem 2rem;
-            color: var(--text-secondary);
-        }
-
-        .empty-state svg {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 1rem;
-            opacity: 0.3;
-        }
-
-        /* Upload Progress Overlay */
         .uploads-panel {
-            position: fixed;
-            bottom: 1.5rem;
-            right: 1.5rem;
-            width: 360px;
-            max-width: calc(100vw - 2rem);
-            background: var(--surface);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow-lg);
-            z-index: 45;
+            position: fixed; bottom: 1.5rem; right: 1.5rem; width: 360px;
+            max-width: calc(100vw - 2rem); background: var(--surface);
+            border-radius: var(--radius); border: 1px solid var(--border);
+            box-shadow: var(--shadow-lg); z-index: 45;
             transform: translateY(calc(100% + 2rem));
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -564,91 +259,30 @@
         .uploads-panel.open { transform: translateY(0); }
 
         .uploads-header {
-            padding: 1rem 1.25rem;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            font-weight: 600;
-            font-size: 0.875rem;
+            padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            font-weight: 600; font-size: 0.875rem;
         }
 
-        .uploads-list {
-            max-height: 300px;
-            overflow-y: auto;
-            padding: 0.5rem;
-        }
+        .uploads-list { max-height: 300px; overflow-y: auto; padding: 0.5rem; }
 
-        .upload-item {
-            padding: 0.875rem 1rem;
-            border-radius: 8px;
-            margin-bottom: 0.5rem;
-            background: var(--bg);
-        }
+        .upload-item { padding: 0.875rem 1rem; border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg); }
+        .upload-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.8125rem; }
+        .upload-filename { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+        .upload-status { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
 
-        .upload-item-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-            font-size: 0.8125rem;
-        }
+        .progress-bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.3s ease; width: 0%; }
 
-        .upload-filename {
-            font-weight: 500;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 200px;
-        }
-
-        .upload-status {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .progress-bar {
-            height: 4px;
-            background: var(--border);
-            border-radius: 2px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: var(--primary);
-            border-radius: 2px;
-            transition: width 0.3s ease;
-            width: 0%;
-        }
-
-        /* Toast */
-        .toast-container {
-            position: fixed;
-            top: 1.5rem;
-            right: 1.5rem;
-            z-index: 60;
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
+        .toast-container { position: fixed; top: 1.5rem; right: 1.5rem; z-index: 60; display: flex; flex-direction: column; gap: 0.75rem; }
 
         .toast {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-left: 4px solid var(--primary);
-            border-radius: 10px;
-            padding: 1rem 1.25rem;
-            box-shadow: var(--shadow-lg);
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            min-width: 300px;
-            max-width: 400px;
-            animation: slideIn 0.3s ease;
-            font-size: 0.875rem;
-            font-weight: 500;
+            background: var(--surface); border: 1px solid var(--border);
+            border-left: 4px solid var(--primary); border-radius: 10px;
+            padding: 1rem 1.25rem; box-shadow: var(--shadow-lg);
+            display: flex; align-items: center; gap: 0.75rem;
+            min-width: 300px; max-width: 400px;
+            animation: slideIn 0.3s ease; font-size: 0.875rem; font-weight: 500;
         }
 
         .toast.success { border-left-color: var(--success); }
@@ -659,25 +293,15 @@
             to { transform: translateX(0); opacity: 1; }
         }
 
-        /* Mobile Overlay */
         .sidebar-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.5);
-            z-index: 45;
-            backdrop-filter: blur(4px);
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5); z-index: 45; backdrop-filter: blur(4px);
         }
 
-        /* Responsive */
-        @media (max-width: 1024px) {
-            .grid { grid-template-columns: repeat(2, 1fr); }
-        }
+        @media (max-width: 1024px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 
         @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-            }
+            .sidebar { transform: translateX(-100%); }
             .sidebar.open { transform: translateX(0); }
             .main { margin-left: 0; }
             .mobile-toggle { display: block; }
@@ -689,7 +313,6 @@
             th, td { padding: 0.75rem 1rem; }
         }
 
-        /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
@@ -711,17 +334,17 @@
         <nav class="sidebar-nav">
             <div class="nav-section">
                 <div class="nav-label">Menu</div>
-                <a  href="{{url_for('index')}}" class="nav-item active" onclick="switchTab('dashboard')">
+                <a href="{{ url_for('index') }}" class="nav-item active" onclick="switchTab(event)">
                     <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
                     Dashboard
                 </a>
-                <a href="{{url_for('chat_page')}}" class="nav-item" >
+                <a href="{{ url_for('chat_page') }}" class="nav-item">
                     <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     Chat
                 </a>
                 <a href="{{ url_for('dm') }}" class="nav-item">
                     <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                   Direct Chat
+                    Direct Chat
                 </a>
                 <button class="nav-item" onclick="document.getElementById('fileInput').click()">
                     <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
@@ -782,7 +405,7 @@
                 <div class="card stat-card">
                     <div class="stat-info">
                         <h3>Total Files</h3>
-                        <div class="stat-value" id="statFiles">{{ files|length }}</div>
+                        <div class="stat-value" id="statFiles">{{ display_files|length }}</div>
                     </div>
                     <div class="stat-icon">
                         <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -815,17 +438,17 @@
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                 </div>
                 <h3>Drop files here or click to upload</h3>
-                <p>Supports any file type • Max size limited by server</p>
+                <p>Supports any file type — Max size limited by server</p>
             </div>
 
             <!-- Files Table -->
             <div class="section-header">
                 <h2>Recent Files</h2>
-                <span class="badge" id="fileCountBadge">{{ files|length }} items</span>
+                <span class="badge" id="fileCountBadge">{{ display_files|length }} items</span>
             </div>
 
             <div class="table-container">
-                {% if files %}
+                {% if display_files %}
                 <table>
                     <thead>
                         <tr>
@@ -836,7 +459,7 @@
                         </tr>
                     </thead>
                     <tbody id="fileTableBody">
-                        {% for file in files %}
+                        {% for file in display_files %}
                         <tr data-filename="{{ file }}">
                             <td>
                                 <div class="file-cell">
@@ -878,17 +501,15 @@
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
     </div>
-    <div class="uploads-list" id="uploadsList">
-        <!-- Dynamic -->
-    </div>
+    <div class="uploads-list" id="uploadsList"></div>
 </div>
 
 <!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
-    // User identity
-    const userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
+    // User identity — use let so username_taken can update it
+    let userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
     sessionStorage.setItem('fs_username', userName);
     document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
 
@@ -897,9 +518,7 @@
         if (!localStorage.getItem('ecdh_private_key') || !localStorage.getItem('ecdh_public_key')) {
             try {
                 const keyPair = await window.crypto.subtle.generateKey(
-                    { name: "ECDH", namedCurve: "P-256" },
-                    true,
-                    ["deriveKey", "deriveBits"]
+                    { name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"]
                 );
                 const pub = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
                 const priv = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
@@ -923,20 +542,86 @@
     ensureEncryptionKeys(userName);
 
     // Socket.IO
-    const socket = io();
+    const socket = io({
+        transports: ['polling', 'websocket'],
+        upgrade: true,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+    });
 
     socket.on('connect', () => {
         updateConnectionStatus(true);
         socket.emit('user_online', { name: userName });
     });
 
-    socket.on('disconnect', () => {
+    // Handle server rejecting a duplicate username
+    socket.on('username_taken', (data) => {
+        const newName = prompt(
+            '"' + data.username + '" is already in use by another session.\nPlease choose a different name:',
+            'Anonymous'
+        );
+        if (newName && newName.trim()) {
+            userName = newName.trim();
+            sessionStorage.setItem('fs_username', userName);
+            document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
+            socket.emit('user_online', { name: userName });
+            ensureEncryptionKeys(userName);
+        }
+    });
+
+    // Heartbeat to keep user online status fresh
+    setInterval(() => {
+        if (socket.connected) {
+            socket.emit('heartbeat', { name: userName });
+        }
+    }, 5000);
+
+    socket.on('disconnect', (reason) => {
         updateConnectionStatus(false);
+        console.log('Socket disconnected:', reason);
+    });
+
+    socket.on('connect_error', (err) => {
+        console.error('Socket connect error:', err.message);
     });
 
     socket.on('online_users', (users) => {
         renderOnlineUsers(users);
-        document.getElementById('statUsers').textContent = Object.keys(users).length;
+        document.getElementById('statUsers').textContent = (users || []).length;
+    });
+
+    socket.on('file_update', (data) => {
+        if (data.event === 'new_file') {
+            const existingRow = document.querySelector(`tr[data-filename="${CSS.escape(data.filename)}"]`);
+            if (existingRow) {
+                const statusBadge = existingRow.querySelector('td:nth-child(3) .badge');
+                if (statusBadge) {
+                    statusBadge.textContent = 'Ready';
+                    statusBadge.className = 'badge badge-success';
+                }
+                const metaText = existingRow.querySelector('.file-meta');
+                if (metaText) {
+                    metaText.textContent = 'Available for download';
+                }
+            } else {
+                addFileToTable(data.filename, 'Ready');
+                showToast(`New file uploaded: ${data.filename}`, 'success');
+            }
+            fetchFileCount();
+            if (typeof estimateStorage === 'function') estimateStorage();
+        }
+    });
+
+    socket.on('upload_update', (data) => {
+        const item = document.getElementById(data.id);
+        if (item) {
+            updateUploadStatus(data.id, data.status, 100);
+            if (data.status === 'done') {
+                showToast('File processed successfully', 'success');
+            }
+        }
     });
 
     // UI State
@@ -945,6 +630,8 @@
         if (connected) {
             el.innerHTML = '<span class="status-dot" style="position:static;background:var(--success);"></span> Live';
             el.className = 'badge badge-success';
+            el.style.background = '';
+            el.style.color = '';
         } else {
             el.innerHTML = '<span class="status-dot" style="position:static;background:var(--danger);"></span> Offline';
             el.className = 'badge';
@@ -955,7 +642,8 @@
 
     function renderOnlineUsers(users) {
         const container = document.getElementById('userList');
-        const count = Object.keys(users).length;
+        const list = Array.isArray(users) ? users : [];
+        const count = list.length;
         document.getElementById('onlineCount').textContent = count;
 
         if (count === 0) {
@@ -963,8 +651,8 @@
             return;
         }
 
-        container.innerHTML = Object.entries(users).map(([id, data]) => `
-            <div class="user-chip" title="IP: ${data.ip || 'unknown'}">
+        container.innerHTML = list.map((data) => `
+            <div class="user-chip" title="IP: ${escapeHtml(data.ip || 'unknown')}">
                 <div class="user-avatar">${(data.name || 'A').charAt(0).toUpperCase()}</div>
                 <span class="user-name">${escapeHtml(data.name || 'Anonymous')}</span>
                 <span class="status-dot"></span>
@@ -979,13 +667,8 @@
     let uploadQueueCount = 0;
 
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        uploadZone.addEventListener(eventName, preventDefaults, false);
+        uploadZone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
     });
-
-    function preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
 
     ['dragenter', 'dragover'].forEach(eventName => {
         uploadZone.addEventListener(eventName, () => uploadZone.classList.add('dragover'), false);
@@ -1000,6 +683,19 @@
         if (files.length) handleFileSelect(files[0]);
     });
 
+    function updateFileCount(count) {
+        document.getElementById('statFiles').textContent = count;
+        document.getElementById('fileCountBadge').textContent = count + ' items';
+    }
+
+    function fetchFileCount() {
+        fetch('/api/file_count')
+            .then(r => r.json())
+            .then(data => { if (typeof data.count === 'number') updateFileCount(data.count); })
+            .catch(() => {});
+    }
+    fetchFileCount();
+
     function handleFileSelect(file) {
         if (!file) return;
 
@@ -1011,28 +707,36 @@
         formData.append('uploader', userName);
 
         fetch('/upload', { method: 'POST', body: formData })
-            .then(r => r.json())
+            .then(r => {
+                if (!r.ok) throw new Error('Server returned ' + r.status);
+                return r.json();
+            })
             .then(data => {
-                updateUploadStatus(uploadId, 'queued', 100);
+                // Change ID to the server-assigned upload_id so upload_update can find it
+                const item = document.getElementById(uploadId);
+                if (item) item.id = data.upload_id;
+
+                updateUploadStatus(data.upload_id, 'queued', 100);
                 showToast('File queued for processing', 'success');
                 uploadQueueCount++;
                 updateQueueCount();
 
-                // Simulate progress for visual feedback (backend handles actual processing)
+                // Add to table as Queued immediately
+                addFileToTable(file.name, 'Queued');
+                
+                // Set timeout to decrement queue count (simulating processing delay)
                 setTimeout(() => {
-                    addFileToTable(file.name);
                     uploadQueueCount = Math.max(0, uploadQueueCount - 1);
                     updateQueueCount();
-                    document.getElementById('statFiles').textContent =
-                        parseInt(document.getElementById('statFiles').textContent) + 1;
-                    document.getElementById('fileCountBadge').textContent =
-                        parseInt(document.getElementById('statFiles').textContent) + ' items';
                 }, 1500);
             })
             .catch(err => {
                 updateUploadStatus(uploadId, 'error', 0);
                 showToast('Upload failed: ' + err.message, 'error');
             });
+
+        // Reset input so same file can be re-uploaded
+        document.getElementById('fileInput').value = '';
     }
 
     function addUploadItem(id, filename) {
@@ -1050,7 +754,6 @@
         `;
         uploadsList.prepend(div);
 
-        // Animate to 40% then pause until server responds
         setTimeout(() => {
             const fill = div.querySelector('.progress-fill');
             if (fill) fill.style.width = '60%';
@@ -1063,7 +766,6 @@
 
         const statusEl = item.querySelector('.upload-status');
         const fill = item.querySelector('.progress-fill');
-
         fill.style.width = percent + '%';
 
         if (status === 'queued') {
@@ -1081,32 +783,42 @@
         el.style.display = uploadQueueCount > 0 ? 'inline-flex' : 'none';
     }
 
-    function addFileToTable(filename) {
+    function addFileToTable(filename, status = 'Queued') {
         const tbody = document.getElementById('fileTableBody');
         const empty = document.querySelector('.empty-state');
         if (empty) empty.remove();
 
         if (!tbody) {
-            // Rebuild table if it was empty state
+            // Table doesn't exist yet (was empty state) — reload to rebuild
             location.reload();
+            return;
+        }
+
+        // Avoid duplicate entries if it's already there
+        if (document.querySelector(`tr[data-filename="${CSS.escape(filename)}"]`)) {
             return;
         }
 
         const ext = filename.split('.').pop().toUpperCase();
         const row = document.createElement('tr');
         row.setAttribute('data-filename', filename);
+        
+        const isReady = status === 'Ready';
+        const badgeClass = isReady ? 'badge badge-success' : 'badge badge-queued';
+        const metaText = isReady ? 'Available for download' : 'Just uploaded';
+
         row.innerHTML = `
             <td>
                 <div class="file-cell">
                     <div class="file-icon">${ext.slice(0,3)}</div>
                     <div>
                         <div class="file-name">${escapeHtml(filename)}</div>
-                        <div class="file-meta">Just uploaded</div>
+                        <div class="file-meta">${metaText}</div>
                     </div>
                 </div>
             </td>
             <td><span class="badge">${ext || 'FILE'}</span></td>
-            <td><span class="badge badge-queued">Queued</span></td>
+            <td><span class="badge ${badgeClass}">${status}</span></td>
             <td>
                 <a href="/download/${encodeURIComponent(filename)}" class="action-btn" title="Download">
                     <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -1115,7 +827,6 @@
         `;
         tbody.prepend(row);
 
-        // Flash animation
         row.style.background = '#e0e7ff';
         setTimeout(() => row.style.background = '', 1000);
     }
@@ -1130,10 +841,9 @@
         document.getElementById('uploadsPanel').classList.toggle('open');
     }
 
-    function switchTab(tab) {
+    function switchTab(e) {
         document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-        event.currentTarget.classList.add('active');
-        // In a multi-page app this would route; for SPA template we keep single view
+        e.currentTarget.classList.add('active');
     }
 
     // Utilities
@@ -1146,7 +856,7 @@
     function showToast(message, type = 'info') {
         const container = document.getElementById('toastContainer');
         const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
+        toast.className = 'toast ' + type;
         toast.innerHTML = `
             <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 ${type === 'success'
@@ -1159,13 +869,13 @@
         setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'translateX(100%)';
+            toast.style.transition = 'all 0.3s ease';
             setTimeout(() => toast.remove(), 300);
         }, 4000);
     }
 
-    // Estimate storage (client-side approximation since backend doesn't expose size endpoint)
+    // Storage estimate
     function estimateStorage() {
-        // Placeholder: in production, fetch from an API endpoint
         const files = document.querySelectorAll('#fileTableBody tr');
         const count = files.length;
         document.getElementById('statStorage').textContent = count > 0 ? '~' + (count * 2.4).toFixed(1) + ' MB' : '0 MB';

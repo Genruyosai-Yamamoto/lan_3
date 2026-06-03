@@ -251,7 +251,12 @@
             font-size: 0.75rem;
             font-weight: 600;
             color: var(--success);
+            transition: color 0.3s;
         }
+
+        .live-indicator.offline { color: var(--danger); }
+        .live-indicator.offline .live-pulse { background: var(--danger); }
+        .live-indicator.offline .live-pulse::after { border-color: var(--danger); }
 
         .live-pulse {
             width: 8px; height: 8px;
@@ -566,7 +571,7 @@
             padding: 0.875rem 1.125rem;
             border: 1px solid var(--border);
             border-radius: 12px;
-            font-size: 16px; /* Prevents iOS zoom */
+            font-size: 16px;
             font-family: inherit;
             background: var(--surface);
             color: var(--text);
@@ -652,12 +657,14 @@
             border: 2px solid var(--primary);
             border-radius: 8px;
             font-family: inherit;
-            font-size: 16px; /* Prevents iOS zoom */
+            font-size: 16px;
             resize: none;
             min-height: 60px;
             background: var(--surface);
             color: var(--text);
         }
+
+        .edit-textarea:focus { outline: none; box-shadow: 0 0 0 3px var(--primary-light); }
 
         /* Empty */
         .empty-chat {
@@ -683,6 +690,7 @@
             backdrop-filter: blur(4px);
             touch-action: none;
         }
+        .sidebar-overlay.active { display: block; }
 
         .toast-container {
             position: fixed;
@@ -767,7 +775,7 @@
 
             .message-bubble {
                 padding: 0.75rem 1rem;
-                font-size: 1rem; /* Larger for readability */
+                font-size: 1rem;
                 border-radius: 14px;
             }
 
@@ -778,7 +786,6 @@
 
             .message-meta { font-size: 0.6875rem; }
 
-            /* Tap-to-show actions on mobile (no hover) */
             .message-actions {
                 top: -6px;
                 right: -6px;
@@ -806,11 +813,6 @@
             }
 
             .emoji-picker {
-                left: 50% !important;
-                right: auto !important;
-                transform: translateX(-50%);
-                bottom: 80px !important;
-                top: auto !important;
                 grid-template-columns: repeat(4, 1fr);
                 padding: 0.375rem;
             }
@@ -835,7 +837,6 @@
             }
         }
 
-        /* Very small phones */
         @media (max-width: 380px) {
             .message { max-width: 92%; }
             .message-bubble { font-size: 0.9375rem; }
@@ -845,6 +846,8 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -870,7 +873,7 @@
                 </a>
                 <a href="{{ url_for('dm') }}" class="nav-item">
                     <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                   Direct Chat
+                    Direct Chat
                 </a>
             </div>
         </nav>
@@ -900,9 +903,9 @@
                     <p id="chatSubtext">Initializing...</p>
                 </div>
             </div>
-            <div class="live-indicator">
+            <div class="live-indicator" id="liveIndicator">
                 <span class="live-pulse"></span>
-                Live
+                <span id="liveText">Live</span>
             </div>
         </header>
 
@@ -916,7 +919,7 @@
                             </svg>
                             General
                         </h2>
-                        <p id="chatSubtext2">Encrypted</p>
+                        <p>End-to-End Encrypted</p>
                     </div>
                     <span class="badge" id="msgCount">0</span>
                 </div>
@@ -927,15 +930,15 @@
                         {% set audio_filename = msg.content.split('/')[-1].split('\\')[-1] if msg.message_type == 'audio' else '' %}
                         <div class="message"
                              data-id="{{ msg.id }}"
-                             data-sender="{{ msg.user or msg.sender or 'Anonymous' }}"
+                             data-sender="{{ msg.user or 'Anonymous' }}"
                              data-type="{{ msg.message_type or 'text' }}"
                              data-edited="{{ 'true' if msg.edited else 'false' }}"
                              data-deleted="{{ 'true' if msg.deleted else 'false' }}"
                              onclick="toggleMessageActions(this)">
-                            <div class="message-avatar">{{ ((msg.user or msg.sender or 'A')[0]).upper() }}</div>
+                            <div class="message-avatar">{{ ((msg.user or 'A')[0]).upper() }}</div>
                             <div class="message-body">
                                 <div class="message-meta">
-                                    <span class="message-author">{{ msg.user or msg.sender or 'Anonymous' }}</span>
+                                    <span class="message-author">{{ msg.user or 'Anonymous' }}</span>
                                     <span>{{ msg.timestamp.strftime('%H:%M') if msg.timestamp else 'now' }}</span>
                                     {% if msg.edited %}
                                     <span class="edited-badge">edited {{ msg.edited_at.strftime('%H:%M') if msg.edited_at else '' }}</span>
@@ -944,10 +947,17 @@
                                 <div class="message-bubble {% if msg.deleted %}deleted{% endif %}">
                                     {% if msg.deleted %}
                                         <em>This message was deleted</em>
-                                    {% elif msg.message_type == 'audio' %}
-                                        <audio controls src="{{ url_for('get_audio', filename=audio_filename) }}"></audio>
                                     {% else %}
-                                        <div class="text-content">{{ msg.content or msg.text or '' }}</div>
+                                        {% if msg.reply_to_id %}
+                                        <div class="reply-quote" onclick="scrollToMessage({{ msg.reply_to_id }})" style="background: rgba(0,0,0,0.15); border-left: 3px solid var(--primary, #3b82f6); padding: 0.35rem 0.6rem; font-size: 0.8rem; margin-bottom: 0.5rem; cursor: pointer; border-radius: 4px; opacity: 0.85; text-align: left;">
+                                            <strong>@{{ msg.reply_to.user if msg.reply_to else 'User' }}</strong>: {{ msg.reply_to.content if msg.reply_to else '' }}
+                                        </div>
+                                        {% endif %}
+                                        {% if msg.message_type == 'audio' %}
+                                            <audio controls src="{{ url_for('get_audio', filename=audio_filename) }}"></audio>
+                                        {% else %}
+                                            <div class="text-content">{{ msg.content or '' }}</div>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                                 <div class="reactions-bar" data-message-id="{{ msg.id }}"></div>
@@ -955,6 +965,7 @@
                             <div class="message-actions" onclick="event.stopPropagation()">
                                 <button class="action-btn" onclick="openEmojiPicker(event, {{ msg.id }})" title="React">😊</button>
                                 {% if not msg.deleted %}
+                                <button class="action-btn" onclick="setReplyTarget({{ msg.id }}, '{{ (msg.user or 'Anonymous')|e }}', '{{ (msg.content or '')|e }}')" title="Reply">↩️</button>
                                 <button class="action-btn edit-trigger hidden" onclick="startEdit({{ msg.id }})" title="Edit">✏️</button>
                                 <button class="action-btn delete-trigger hidden" onclick="deleteMessage({{ msg.id }})" title="Delete">🗑️</button>
                                 {% endif %}
@@ -975,6 +986,15 @@
                         <span class="live-pulse"></span>
                         Recording… tap mic to stop
                     </div>
+                    
+                    <div class="replying-indicator" id="replyIndicator" style="display: none; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.1); border-left: 4px solid var(--primary, #3b82f6); padding: 0.5rem 1rem; font-size: 0.85rem; border-radius: 6px; margin-bottom: 0.5rem;">
+                        <div style="display: flex; flex-direction: column; text-align: left;">
+                            <span style="font-weight: bold; font-size: 0.75rem; text-transform: uppercase; opacity: 0.7; color: var(--primary);">Replying to <span id="replyUser"></span></span>
+                            <span id="replyText" style="opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; color: var(--text);"></span>
+                        </div>
+                        <button onclick="cancelReply()" style="background: none; border: none; color: inherit; font-size: 1.1rem; cursor: pointer; padding: 0.25rem;">❌</button>
+                    </div>
+
                     <div class="input-wrapper">
                         <textarea class="chat-input" id="messageInput" placeholder="Type a message…" rows="1" onkeydown="handleKeydown(event)"></textarea>
                         <div class="input-actions">
@@ -998,7 +1018,35 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
-    const userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
+    // Reply functionality state and helpers
+    let currentReplyToId = null;
+
+    function setReplyTarget(messageId, sender, content) {
+        currentReplyToId = messageId;
+        document.getElementById('replyUser').textContent = '@' + sender;
+        document.getElementById('replyText').textContent = content;
+        document.getElementById('replyIndicator').style.display = 'flex';
+        document.getElementById('messageInput').focus();
+    }
+
+    function cancelReply() {
+        currentReplyToId = null;
+        document.getElementById('replyIndicator').style.display = 'none';
+    }
+
+    function scrollToMessage(messageId) {
+        const el = document.querySelector(`.message[data-id="${messageId}"]`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+            setTimeout(() => {
+                el.style.backgroundColor = '';
+            }, 2000);
+        }
+    }
+
+    // FIX 1: let instead of const so username_taken can update it
+    let userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
     sessionStorage.setItem('fs_username', userName);
     document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
 
@@ -1040,22 +1088,82 @@
 
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
 
-    const socket = io();
+    // FIX 2: Socket.IO with reconnection config matching index.html
+    const socket = io({
+        transports: ['polling', 'websocket'],
+        upgrade: true,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+    });
 
     socket.on('connect', () => {
         socket.emit('user_online', { name: userName });
         document.getElementById('chatSubtext').textContent = 'Connected as ' + userName;
+        // FIX 3: Update live indicator on connect
+        const indicator = document.getElementById('liveIndicator');
+        indicator.classList.remove('offline');
+        document.getElementById('liveText').textContent = 'Live';
+        // Sync Flask session so edit/delete auth works server-side
+        fetch('/set_username', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: userName })
+        }).catch(() => {});
     });
 
-    socket.on('disconnect', () => {
+    // FIX 4: Handle duplicate username rejection
+    socket.on('username_taken', (data) => {
+        const newName = prompt(
+            '"' + data.username + '" is already in use by another session.\nPlease choose a different name:',
+            'Anonymous'
+        );
+        if (newName && newName.trim()) {
+            userName = newName.trim();
+            sessionStorage.setItem('fs_username', userName);
+            document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
+            socket.emit('user_online', { name: userName });
+            ensureEncryptionKeys(userName);
+            document.getElementById('chatSubtext').textContent = 'Connected as ' + userName;
+            // Re-apply own-message markers with new name
+            initMessages();
+            // Sync Flask session with new name
+            fetch('/set_username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: userName })
+            }).catch(() => {});
+        }
+    });
+
+    socket.on('disconnect', (reason) => {
         document.getElementById('chatSubtext').textContent = 'Disconnected';
+        // FIX 5: Update live indicator on disconnect
+        const indicator = document.getElementById('liveIndicator');
+        indicator.classList.add('offline');
+        document.getElementById('liveText').textContent = 'Offline';
+        console.log('Socket disconnected:', reason);
     });
 
+    socket.on('connect_error', (err) => {
+        console.error('Socket connect error:', err.message);
+    });
+
+    // FIX 6: Heartbeat to keep online status fresh (matches index.html)
+    setInterval(() => {
+        if (socket.connected) {
+            socket.emit('heartbeat', { name: userName });
+        }
+    }, 5000);
+
+    // FIX 7: Server sends an ARRAY, not a dict. Use Array.isArray check.
     socket.on('online_users', (users) => {
         renderOnlineUsers(users);
     });
 
     socket.on('new_message', (data) => {
+        // FIX 8: Server always emits new_message for both text and audio
         appendMessage({
             id: data.id,
             sender: data.user,
@@ -1063,26 +1171,18 @@
             content: data.content,
             time: data.time,
             edited: false,
-            deleted: false
+            deleted: false,
+            reply_to_id: data.reply_to_id,
+            reply_to_user: data.reply_to_user,
+            reply_to_content: data.reply_to_content
         });
         updateCount();
     });
 
-    socket.on('new_audio', (data) => {
-        appendMessage({
-            id: data.id,
-            sender: data.sender,
-            type: 'audio',
-            content: data.audio,
-            time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}),
-            edited: false,
-            deleted: false
-        });
-        updateCount();
-    });
+    // FIX 9: Removed dead new_audio handler — server uses new_message for audio
 
     socket.on('message_edited', (data) => {
-        const msg = document.querySelector(`.message[data-id="${data.id}"]`);
+        const msg = document.querySelector('.message[data-id="' + data.id + '"]');
         if (!msg) return;
         const bubble = msg.querySelector('.text-content');
         if (bubble) bubble.textContent = data.content;
@@ -1097,7 +1197,7 @@
     });
 
     socket.on('message_deleted', (data) => {
-        const msg = document.querySelector(`.message[data-id="${data.id}"]`);
+        const msg = document.querySelector('.message[data-id="' + data.id + '"]');
         if (!msg) return;
         const bubble = msg.querySelector('.message-bubble');
         bubble.className = 'message-bubble deleted';
@@ -1123,14 +1223,25 @@
         renderReactions(data.message_id);
     });
 
+    // FIX 10: Handle server-sent errors (e.g. edit/delete permission denied)
+    socket.on('error', (data) => {
+        if (data && data.message) {
+            showToast(data.message, 'error');
+        }
+    });
+
     function initMessages() {
         const msgs = document.querySelectorAll('.message');
         msgs.forEach(msg => {
             const sender = msg.getAttribute('data-sender');
             if (sender === userName) {
                 msg.classList.add('own');
-                msg.querySelector('.edit-trigger')?.classList.remove('hidden');
-                msg.querySelector('.delete-trigger')?.classList.remove('hidden');
+                const editBtn = msg.querySelector('.edit-trigger');
+                const deleteBtn = msg.querySelector('.delete-trigger');
+                if (editBtn) editBtn.classList.remove('hidden');
+                if (deleteBtn) deleteBtn.classList.remove('hidden');
+            } else {
+                msg.classList.remove('own');
             }
         });
         updateCount();
@@ -1138,13 +1249,11 @@
     }
     initMessages();
 
-    // Mobile: tap message to show actions (instead of hover)
     function toggleMessageActions(msgEl) {
         if (!isMobile) return;
         const actions = msgEl.querySelector('.message-actions');
         if (!actions) return;
 
-        // Hide others
         document.querySelectorAll('.message-actions.visible').forEach(el => {
             if (el !== actions) el.classList.remove('visible');
         });
@@ -1153,7 +1262,6 @@
         activeMessageId = actions.classList.contains('visible') ? msgEl.getAttribute('data-id') : null;
     }
 
-    // Hide actions when tapping elsewhere
     if (isMobile) {
         document.getElementById('messagesArea').addEventListener('scroll', () => {
             document.querySelectorAll('.message-actions.visible').forEach(el => el.classList.remove('visible'));
@@ -1164,10 +1272,11 @@
         const input = document.getElementById('messageInput');
         const text = input.value.trim();
         if (!text) return;
-        socket.emit('send_message', { user: userName, text: text });
+        socket.emit('send_message', { user: userName, text: text, reply_to_id: currentReplyToId });
         input.value = '';
         input.style.height = 'auto';
-        if (isMobile) input.blur(); // Dismiss keyboard
+        cancelReply();
+        if (isMobile) input.blur();
     }
 
     async function toggleRecording() {
@@ -1185,11 +1294,14 @@
                     const formData = new FormData();
                     formData.append('audio', blob, 'recording.webm');
                     formData.append('user', userName);
+                    // FIX 11: Send SID so server can verify ownership for edit/delete
+                    formData.append('sid', socket.id);
                     try {
-                        await fetch('/upload_audio', { method: 'POST', body: formData });
+                        const resp = await fetch('/upload_audio', { method: 'POST', body: formData });
+                        if (!resp.ok) throw new Error('Server returned ' + resp.status);
                         showToast('Audio sent', 'success');
                     } catch (err) {
-                        showToast('Failed to upload audio', 'error');
+                        showToast('Failed to upload audio: ' + err.message, 'error');
                     }
                     stream.getTracks().forEach(t => t.stop());
                 };
@@ -1209,7 +1321,8 @@
     }
 
     function startEdit(id) {
-        const msg = document.querySelector(`.message[data-id="${id}"]`);
+        const msg = document.querySelector('.message[data-id="' + id + '"]');
+        if (!msg) return;
         const bubble = msg.querySelector('.text-content');
         if (!bubble) return;
         const original = bubble.textContent;
@@ -1220,7 +1333,10 @@
         bubble.replaceWith(ta);
         ta.focus();
 
+        let saved = false;
         function save() {
+            if (saved) return;
+            saved = true;
             const val = ta.value.trim();
             if (val && val !== original) {
                 socket.emit('edit_message', { message_id: id, content: val, user: userName });
@@ -1228,7 +1344,7 @@
             const newBubble = document.createElement('div');
             newBubble.className = 'text-content';
             newBubble.textContent = val || original;
-            ta.replaceWith(newBubble);
+            if (ta.parentNode) ta.replaceWith(newBubble);
         }
 
         ta.addEventListener('blur', save);
@@ -1236,6 +1352,14 @@
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 ta.blur();
+            }
+            // FIX 12: Escape to cancel edit
+            if (e.key === 'Escape') {
+                saved = true;
+                const newBubble = document.createElement('div');
+                newBubble.className = 'text-content';
+                newBubble.textContent = original;
+                if (ta.parentNode) ta.replaceWith(newBubble);
             }
         });
     }
@@ -1265,20 +1389,46 @@
             popup.appendChild(btn);
         });
 
-        const rect = event.currentTarget.getBoundingClientRect();
-        if (isMobile) {
-            // Centered above input on mobile
-            popup.style.left = '50%';
-            popup.style.top = 'auto';
-            popup.style.bottom = '80px';
-            popup.style.transform = 'translateX(-50%)';
-        } else {
-            popup.style.left = rect.left + 'px';
-            popup.style.top = (rect.top - popup.offsetHeight - 8) + 'px';
-            popup.style.transform = 'none';
+        const triggerBtn = event.currentTarget;
+        const rect = triggerBtn.getBoundingClientRect();
+        
+        // Temporarily clear hidden class and display as grid to accurately measure dimensions
+        const origDisplay = popup.style.display;
+        popup.style.display = 'grid';
+        const popupWidth = popup.offsetWidth || 180;
+        const popupHeight = popup.offsetHeight || 96;
+        popup.style.display = origDisplay;
+
+        // Calculate centering above the reaction button
+        let left = rect.left + (rect.width / 2) - (popupWidth / 2);
+        let top = rect.top - popupHeight - 8;
+
+        // Horizontally bind to visible viewport
+        const boundaryMargin = 12;
+        if (left < boundaryMargin) {
+            left = boundaryMargin;
+        } else if (left + popupWidth > window.innerWidth - boundaryMargin) {
+            left = window.innerWidth - popupWidth - boundaryMargin;
         }
 
+        // Vertically bind (show below if not enough space above)
+        if (top < boundaryMargin) {
+            top = rect.bottom + 8;
+        }
+
+        popup.style.left = left + 'px';
+        popup.style.top = top + 'px';
+        popup.style.bottom = 'auto';
+        popup.style.transform = 'none';
+
+        // Auto-close on click anywhere
         setTimeout(() => document.addEventListener('click', closeEmojiPicker, { once: true }), 0);
+
+        // Auto-close on scrolling the message box
+        const area = document.getElementById('messagesArea');
+        if (area) {
+            area.addEventListener('scroll', closeEmojiPicker, { once: true });
+        }
     }
 
     function closeEmojiPicker() {
@@ -1296,7 +1446,7 @@
     }
 
     function renderReactions(messageId) {
-        const bar = document.querySelector(`.reactions-bar[data-message-id="${messageId}"]`);
+        const bar = document.querySelector('.reactions-bar[data-message-id="' + messageId + '"]');
         if (!bar) return;
         const list = messageReactions[messageId] || [];
         const grouped = {};
@@ -1308,21 +1458,21 @@
 
         bar.innerHTML = Object.entries(grouped).map(([emoji, data]) => {
             const active = data.users.includes(userName) ? 'active' : '';
-            return `<div class="reaction ${active}" onclick="toggleReaction(${messageId}, '${emoji}')">
-                <span>${emoji}</span>
-                <span class="reaction-count">${data.count}</span>
-            </div>`;
+            return '<div class="reaction ' + active + '" onclick="toggleReaction(' + messageId + ', \'' + emoji + '\')">' +
+                '<span>' + emoji + '</span>' +
+                '<span class="reaction-count">' + data.count + '</span>' +
+            '</div>';
         }).join('');
     }
 
-    function appendMessage({ id, sender, type, content, time, edited, deleted }) {
+    function appendMessage({ id, sender, type, content, time, edited, deleted, reply_to_id, reply_to_user, reply_to_content }) {
         const area = document.getElementById('messagesArea');
         const empty = document.getElementById('emptyState');
         if (empty) empty.remove();
 
         const isOwn = sender === userName;
         const div = document.createElement('div');
-        div.className = `message ${isOwn ? 'own' : ''}`;
+        div.className = 'message' + (isOwn ? ' own' : '');
         div.setAttribute('data-id', id);
         div.setAttribute('data-sender', sender);
         div.setAttribute('data-type', type);
@@ -1330,39 +1480,52 @@
         div.setAttribute('data-deleted', deleted);
         if (isMobile) div.setAttribute('onclick', 'toggleMessageActions(this)');
 
+        let replyHtml = '';
+        if (reply_to_id) {
+            replyHtml = '<div class="reply-quote" onclick="scrollToMessage(' + reply_to_id + ')" style="background: rgba(0,0,0,0.15); border-left: 3px solid var(--primary, #3b82f6); padding: 0.35rem 0.6rem; font-size: 0.8rem; margin-bottom: 0.5rem; cursor: pointer; border-radius: 4px; opacity: 0.85; text-align: left;">' +
+                '<strong>@' + escapeHtml(reply_to_user || 'User') + '</strong>: ' + escapeHtml(reply_to_content || '') +
+            '</div>';
+        }
+
         let bubbleContent = '';
         if (deleted) {
             bubbleContent = '<em>This message was deleted</em>';
         } else if (type === 'audio') {
+            // FIX 13: Extract filename safely, use proper URL encoding
             const audioFilename = content.split(/[\\/]/).pop();
-            bubbleContent = `<audio controls src="/audio/${escapeHtml(audioFilename)}"></audio>`;
+            bubbleContent = replyHtml + '<audio controls src="/audio/' + encodeURIComponent(audioFilename) + '"></audio>';
         } else {
-            bubbleContent = `<div class="text-content">${escapeHtml(content)}</div>`;
+            bubbleContent = replyHtml + '<div class="text-content">' + escapeHtml(content) + '</div>';
         }
 
-        const actionsHtml = (!deleted && isOwn) ? `
-            <button class="action-btn" onclick="openEmojiPicker(event, ${id})" title="React">😊</button>
-            <button class="action-btn" onclick="startEdit(${id})" title="Edit">✏️</button>
-            <button class="action-btn" onclick="deleteMessage(${id})" title="Delete">🗑️</button>
-        ` : (deleted ? '' : `
-            <button class="action-btn" onclick="openEmojiPicker(event, ${id})" title="React">😊</button>
-        `);
+        let actionsHtml = '';
+        if (!deleted) {
+            const replyAction = '<button class="action-btn" onclick="setReplyTarget(' + id + ', \'' + escapeHtml(sender || 'Anonymous').replace(/'/g, "\\'") + '\', \'' + escapeHtml(content || '').replace(/'/g, "\\'") + '\')" title="Reply">↩️</button>';
+            if (isOwn) {
+                actionsHtml =
+                    '<button class="action-btn" onclick="openEmojiPicker(event, ' + id + ')" title="React">😊</button>' +
+                    replyAction +
+                    '<button class="action-btn" onclick="startEdit(' + id + ')" title="Edit">✏️</button>' +
+                    '<button class="action-btn" onclick="deleteMessage(' + id + ')" title="Delete">🗑️</button>';
+            } else {
+                actionsHtml =
+                    '<button class="action-btn" onclick="openEmojiPicker(event, ' + id + ')" title="React">😊</button>' +
+                    replyAction;
+            }
+        }
 
-        const actionsAttr = isMobile ? `onclick="event.stopPropagation()"` : '';
-
-        div.innerHTML = `
-            <div class="message-avatar">${(sender || 'A').charAt(0).toUpperCase()}</div>
-            <div class="message-body">
-                <div class="message-meta">
-                    <span class="message-author">${escapeHtml(sender || 'Anonymous')}</span>
-                    <span>${time || new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                    ${edited ? '<span class="edited-badge">edited</span>' : ''}
-                </div>
-                <div class="message-bubble ${deleted ? 'deleted' : ''}">${bubbleContent}</div>
-                <div class="reactions-bar" data-message-id="${id}"></div>
-            </div>
-            ${actionsHtml ? `<div class="message-actions" ${actionsAttr}>${actionsHtml}</div>` : ''}
-        `;
+        div.innerHTML =
+            '<div class="message-avatar">' + (sender || 'A').charAt(0).toUpperCase() + '</div>' +
+            '<div class="message-body">' +
+                '<div class="message-meta">' +
+                    '<span class="message-author">' + escapeHtml(sender || 'Anonymous') + '</span>' +
+                    '<span>' + (time || new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})) + '</span>' +
+                    (edited ? '<span class="edited-badge">edited</span>' : '') +
+                '</div>' +
+                '<div class="message-bubble' + (deleted ? ' deleted' : '') + '">' + bubbleContent + '</div>' +
+                '<div class="reactions-bar" data-message-id="' + id + '"></div>' +
+            '</div>' +
+            (actionsHtml ? '<div class="message-actions" onclick="event.stopPropagation()">' + actionsHtml + '</div>' : '');
 
         area.appendChild(div);
         scrollToBottom();
@@ -1410,10 +1573,8 @@
         const threshold = 60;
 
         if (!isOpen && touchEndX > touchStartX + threshold && touchStartX < 40) {
-            // Swipe right from left edge -> open
             toggleSidebar(true);
         } else if (isOpen && touchStartX > touchEndX + threshold && touchStartX > window.innerWidth * 0.5) {
-            // Swipe left from middle -> close
             toggleSidebar(false);
         }
     }
@@ -1430,9 +1591,11 @@
         }
     }
 
+    // FIX 14: Server sends an ARRAY, not a dict — use proper iteration
     function renderOnlineUsers(users) {
         const container = document.getElementById('userList');
-        const count = Object.keys(users).length;
+        const list = Array.isArray(users) ? users : [];
+        const count = list.length;
         document.getElementById('onlineCount').textContent = count;
 
         if (count === 0) {
@@ -1440,13 +1603,13 @@
             return;
         }
 
-        container.innerHTML = Object.entries(users).map(([id, data]) => `
-            <div class="user-chip" title="IP: ${data.ip || 'unknown'}">
-                <div class="user-avatar">${(data.name || 'A').charAt(0).toUpperCase()}</div>
-                <span class="user-name">${escapeHtml(data.name || 'Anonymous')}</span>
-                <span class="status-dot"></span>
-            </div>
-        `).join('');
+        container.innerHTML = list.map((data) =>
+            '<div class="user-chip" title="IP: ' + escapeHtml(data.ip || 'unknown') + '">' +
+                '<div class="user-avatar">' + (data.name || 'A').charAt(0).toUpperCase() + '</div>' +
+                '<span class="user-name">' + escapeHtml(data.name || 'Anonymous') + '</span>' +
+                '<span class="status-dot"></span>' +
+            '</div>'
+        ).join('');
     }
 
     function escapeHtml(text) {
@@ -1455,20 +1618,22 @@
         return div.innerHTML;
     }
 
-    function showToast(message, type = 'info') {
+    function showToast(message, type) {
+        type = type || 'info';
         const container = document.getElementById('toastContainer');
         const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
+        toast.className = 'toast ' + type;
         const icon = type === 'error'
             ? '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>'
             : (type === 'success'
                 ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>'
                 : '<path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>');
-        toast.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">${icon}</svg>${escapeHtml(message)}`;
+        toast.innerHTML = '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' + icon + '</svg>' + escapeHtml(message);
         container.appendChild(toast);
         setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'translateX(100%)';
+            toast.style.transition = 'all 0.3s ease';
             setTimeout(() => toast.remove(), 300);
         }, 4000);
     }

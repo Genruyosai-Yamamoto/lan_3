@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0b1121">
-    <title>FileShare Pro — Chat</title>
+    <title>FileShare Pro — Direct Chat</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -261,7 +261,12 @@
             font-size: 0.75rem;
             font-weight: 600;
             color: var(--success);
+            transition: color 0.3s;
         }
+
+        .live-indicator.offline { color: var(--danger); }
+        .live-indicator.offline .live-pulse { background: var(--danger); }
+        .live-indicator.offline .live-pulse::after { border-color: var(--danger); }
 
         .live-pulse {
             width: 8px; height: 8px;
@@ -669,6 +674,8 @@
             color: var(--text);
         }
 
+        .edit-textarea:focus { outline: none; box-shadow: 0 0 0 3px var(--primary-light); }
+
         /* Empty */
         .empty-chat {
             text-align: center;
@@ -683,6 +690,17 @@
 
         .empty-chat svg { width: 64px; height: 64px; margin-bottom: 1rem; opacity: 0.3; }
 
+        /* No-conversation placeholder */
+        .no-conversation {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 3rem;
+            min-height: 400px;
+            flex: 1;
+        }
+
         /* Overlay */
         .sidebar-overlay {
             display: none;
@@ -692,14 +710,9 @@
             z-index: 45;
             backdrop-filter: blur(4px);
             touch-action: none;
-            opacity: 0;
-            transition: opacity 0.3s ease;
         }
 
-        .sidebar-overlay.active {
-            display: block;
-            opacity: 1;
-        }
+        .sidebar-overlay.active { display: block; }
 
         /* Toast */
         .toast-container {
@@ -829,11 +842,6 @@
             }
 
             .emoji-picker {
-                left: 50% !important;
-                right: auto !important;
-                transform: translateX(-50%);
-                bottom: 80px !important;
-                top: auto !important;
                 grid-template-columns: repeat(4, 1fr);
                 padding: 0.375rem;
             }
@@ -867,6 +875,8 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -892,20 +902,18 @@
                     Dashboard
                 </a>
                 <a href="{{ url_for('chat_page') }}" class="nav-item">
-                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-                    Group chat
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                    Group Chat
                 </a>
                 <a href="{{ url_for('dm') }}" class="nav-item active">
                     <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                   Direct Chat
+                    Direct Chat
                 </a>
             </div>
 
             <div class="nav-section" id="onlineUsersSection">
                 <div class="nav-label">Start DM</div>
-                <div id="onlineUsersList">
-                    <!-- Populated by JS -->
-                </div>
+                <div id="onlineUsersList"></div>
             </div>
         </nav>
 
@@ -930,13 +938,13 @@
                     <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
                 <div class="page-title">
-                    <h1>Team Chat</h1>
+                    <h1>Direct Chat</h1>
                     <p id="chatSubtext">Initializing...</p>
                 </div>
             </div>
-            <div class="live-indicator">
+            <div class="live-indicator" id="liveIndicator">
                 <span class="live-pulse"></span>
-                Live
+                <span id="liveText">Live</span>
             </div>
         </header>
 
@@ -953,7 +961,16 @@
                         </h2>
                         <p id="chatSubtext2">Initializing encryption...</p>
                     </div>
-                    <span class="badge" id="msgCount">0 messages</span>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <button id="startCallBtn" class="btn" style="background-color: #28a745; color: white; display: none; padding: 0.35rem 0.75rem; font-size: 0.85rem; border: none; border-radius: 6px; align-items: center; gap: 0.25rem; cursor: pointer;">
+                            📞 Call
+                        </button>
+                        <button id="endCallBtn" class="btn" style="background-color: #dc3545; color: white; display: none; padding: 0.35rem 0.75rem; font-size: 0.85rem; border: none; border-radius: 6px; align-items: center; gap: 0.25rem; cursor: pointer;">
+                            🛑 End Call
+                        </button>
+                        <span class="badge" id="callStatusBadge" style="display: none; background: #ffc107; color: #111; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">Connecting...</span>
+                        <span class="badge" id="msgCount">0 messages</span>
+                    </div>
                 </div>
 
                 <div class="messages-area" id="messagesArea">
@@ -979,10 +996,17 @@
                                 <div class="message-bubble {% if msg.deleted %}deleted{% endif %}">
                                     {% if msg.deleted %}
                                         <em>This message was deleted</em>
-                                    {% elif msg.message_type == 'audio' %}
-                                        <audio controls src="{{ url_for('get_audio', filename=audio_filename) }}"></audio>
                                     {% else %}
-                                        <div class="text-content">{{ msg.content or '' }}</div>
+                                        {% if msg.reply_to_id %}
+                                        <div class="reply-quote" onclick="scrollToMessage({{ msg.reply_to_id }})" style="background: rgba(0,0,0,0.15); border-left: 3px solid var(--primary, #3b82f6); padding: 0.35rem 0.6rem; font-size: 0.8rem; margin-bottom: 0.5rem; cursor: pointer; border-radius: 4px; opacity: 0.85; text-align: left;">
+                                            <strong>@{{ msg.reply_to.sender if msg.reply_to else 'User' }}</strong>: <span class="encrypted-reply-content" data-id="{{ msg.reply_to_id }}">{{ msg.reply_to.content if msg.reply_to else '' }}</span>
+                                        </div>
+                                        {% endif %}
+                                        {% if msg.message_type == 'audio' %}
+                                            <audio controls src="{{ url_for('get_audio', filename=audio_filename) }}"></audio>
+                                        {% else %}
+                                            <div class="text-content">{{ msg.content or '' }}</div>
+                                        {% endif %}
                                     {% endif %}
                                 </div>
                                 <div class="reactions-bar" data-message-id="{{ msg.id }}"></div>
@@ -990,6 +1014,7 @@
                             <div class="message-actions" onclick="event.stopPropagation()">
                                 <button class="action-btn" onclick="openEmojiPicker(event, {{ msg.id }})" title="React">😊</button>
                                 {% if not msg.deleted %}
+                                <button class="action-btn" onclick="setReplyTarget({{ msg.id }}, '{{ (msg.sender or 'Anonymous')|e }}', '{{ (msg.content or '')|e }}')" title="Reply">↩️</button>
                                 <button class="action-btn edit-trigger hidden" onclick="startEdit({{ msg.id }})" title="Edit">✏️</button>
                                 <button class="action-btn delete-trigger hidden" onclick="deleteMessage({{ msg.id }})" title="Delete">🗑️</button>
                                 {% endif %}
@@ -1010,6 +1035,15 @@
                         <span class="live-pulse"></span>
                         Recording… tap mic to stop
                     </div>
+
+                    <div class="replying-indicator" id="replyIndicator" style="display: none; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.15); border-left: 4px solid var(--primary, #3b82f6); padding: 0.5rem 1rem; font-size: 0.85rem; border-radius: 6px; margin-bottom: 0.5rem;">
+                        <div style="display: flex; flex-direction: column; text-align: left;">
+                            <span style="font-weight: bold; font-size: 0.75rem; text-transform: uppercase; opacity: 0.7; color: var(--primary);">Replying to <span id="replyUser"></span></span>
+                            <span id="replyText" style="opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; color: var(--text);"></span>
+                        </div>
+                        <button onclick="cancelReply()" style="background: none; border: none; color: inherit; font-size: 1.1rem; cursor: pointer; padding: 0.25rem;">❌</button>
+                    </div>
+
                     <div class="input-wrapper">
                         <textarea class="chat-input" id="messageInput" placeholder="Type a message…" rows="1" onkeydown="handleKeydown(event)"></textarea>
                         <div class="input-actions">
@@ -1024,7 +1058,7 @@
                 </div>
             </div>
             {% else %}
-            <div class="chat-card" style="display:flex;align-items:center;justify-content:center;text-align:center;padding:3rem;min-height:400px;">
+            <div class="chat-card no-conversation">
                 <div>
                     <div style="font-size:3.5rem;margin-bottom:1.5rem;color:var(--primary);opacity:0.8;">💬</div>
                     <h2 style="font-weight:600;margin-bottom:0.5rem;color:var(--text);">Direct Messaging</h2>
@@ -1039,23 +1073,42 @@
 <!-- Emoji Picker Popup -->
 <div id="emojiPopup" class="emoji-picker hidden"></div>
 
+<!-- Voice Call Elements -->
+<audio id="remoteAudio" autoplay></audio>
+<div id="incomingCallModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center;">
+    <div style="background: #2a2d32; color: #fff; padding: 2rem; border-radius: 12px; max-width: 400px; width: 90%; text-align: center; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+        <h3 style="margin-bottom: 0.5rem; color: #fff;">📞 Incoming Call</h3>
+        <p id="incomingCallUser" style="margin-bottom: 1.5rem; font-weight: bold; font-size: 1.2rem; color: #00fa9a;"></p>
+        <div style="display: flex; gap: 1rem; justify-content: center;">
+            <button id="acceptCallBtn" class="btn" style="background-color: #28a745; color: white; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; cursor: pointer; font-weight: bold;">Accept</button>
+            <button id="declineCallBtn" class="btn" style="background-color: #dc3545; color: white; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; cursor: pointer; font-weight: bold;">Decline</button>
+        </div>
+    </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
-    const userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
+    // FIX 1: let instead of const so username_taken can update it
+    let userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
     sessionStorage.setItem('fs_username', userName);
     document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
 
     const partnerName = "{{ partner or '' }}";
-    const conversationId = "{{ conversation.id if conversation else '' }}";
+    // FIX 2: Parse conversationId as integer — server expects int for conversation_id
+    const conversationId = {{ conversation.id if conversation else 'null' }};
 
     const messageReactions = {};
     let mediaRecorder = null;
     let audioChunks = [];
     let isRecording = false;
     let activeMessageId = null;
+    let currentReplyToId = null;
 
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+    // Whether a conversation view is active (controls which elements exist)
+    const hasConversation = !!partnerName;
 
     // ==========================================
     // CRYPTO / E2EE HELPERS
@@ -1126,7 +1179,7 @@
             return new TextDecoder().decode(decryptedBuffer);
         } catch (e) {
             console.error("Decryption failed:", e);
-            return "🔒 [Decryption failed: key unavailable or modified]";
+            return "\uD83D\uDD12 [Decryption failed: key unavailable or modified]";
         }
     }
 
@@ -1139,6 +1192,17 @@
                 el.textContent = await decryptMessage(rawContent, sharedKey);
             }
         }
+        const replyElements = document.querySelectorAll('.encrypted-reply-content');
+        for (const el of replyElements) {
+            const rawContent = el.textContent.trim();
+            if (rawContent.startsWith('enc:')) {
+                el.textContent = await decryptMessage(rawContent, sharedKey);
+            } else if (rawContent.toLowerCase().endsWith('.webm') || rawContent.toLowerCase().includes('recording')) {
+                el.textContent = '🎤 Voice Message';
+            }
+        }
+        // FIX 3: Re-scroll after decryption changes content height
+        scrollToBottom();
     }
 
     async function initEncryption() {
@@ -1146,11 +1210,11 @@
         if (!partnerName) return;
 
         try {
-            const response = await fetch(`/api/get_public_key/${encodeURIComponent(partnerName)}`);
+            const response = await fetch('/api/get_public_key/' + encodeURIComponent(partnerName));
             if (!response.ok) {
                 console.warn("Partner has no encryption keys registered yet.");
                 const subtext = document.getElementById('chatSubtext2');
-                if (subtext) subtext.textContent = "⚠️ Unencrypted (Partner has no keys)";
+                if (subtext) subtext.textContent = "\u26A0\uFE0F Unencrypted (Partner has no keys)";
                 return;
             }
             const data = await response.json();
@@ -1182,35 +1246,100 @@
             );
 
             const subtext = document.getElementById('chatSubtext2');
-            if (subtext) subtext.textContent = "🔒 End-to-end encrypted";
+            if (subtext) subtext.textContent = "\uD83D\uDD12 End-to-end encrypted";
             await decryptAllMessages();
         } catch (e) {
             console.error("Encryption initialization failed:", e);
             const subtext = document.getElementById('chatSubtext2');
-            if (subtext) subtext.textContent = "⚠️ Encryption error";
+            if (subtext) subtext.textContent = "\u26A0\uFE0F Encryption error";
         }
     }
 
-    // Start E2EE init
     initEncryption();
 
     // ==========================================
     // SOCKET MANAGEMENT
     // ==========================================
-    const socket = io();
+
+    // FIX 4: Socket.IO with reconnection config matching other pages
+    const socket = io({
+        transports: ['polling', 'websocket'],
+        upgrade: true,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+    });
 
     socket.on('connect', () => {
-        socket.emit('user_online', { name: userName, sid: socket.id });
+        socket.emit('user_online', { name: userName });
         document.getElementById('chatSubtext').textContent = 'Connected as ' + userName;
+
+        // FIX 5: Update live indicator on connect
+        const indicator = document.getElementById('liveIndicator');
+        if (indicator) {
+            indicator.classList.remove('offline');
+            document.getElementById('liveText').textContent = 'Live';
+        }
+
         if (partnerName) {
             socket.emit('join_dm', { user1: userName, user2: partnerName });
         }
+
+        // Sync Flask session so edit/delete auth works server-side
+        fetch('/set_username', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: userName })
+        }).catch(() => {});
     });
 
-    socket.on('disconnect', () => {
-        document.getElementById('chatSubtext').textContent = 'Disconnected — reconnecting…';
+    // FIX 6: Handle duplicate username rejection
+    socket.on('username_taken', (data) => {
+        const newName = prompt(
+            '"' + data.username + '" is already in use by another session.\nPlease choose a different name:',
+            'Anonymous'
+        );
+        if (newName && newName.trim()) {
+            userName = newName.trim();
+            sessionStorage.setItem('fs_username', userName);
+            document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
+            socket.emit('user_online', { name: userName });
+            ensureEncryptionKeys(userName);
+            document.getElementById('chatSubtext').textContent = 'Connected as ' + userName;
+            initMessages();
+            // Sync Flask session with new name
+            fetch('/set_username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: userName })
+            }).catch(() => {});
+        }
     });
 
+    socket.on('disconnect', (reason) => {
+        document.getElementById('chatSubtext').textContent = 'Disconnected — reconnecting\u2026';
+        // FIX 7: Update live indicator on disconnect
+        const indicator = document.getElementById('liveIndicator');
+        if (indicator) {
+            indicator.classList.add('offline');
+            document.getElementById('liveText').textContent = 'Offline';
+        }
+        console.log('Socket disconnected:', reason);
+    });
+
+    socket.on('connect_error', (err) => {
+        console.error('Socket connect error:', err.message);
+    });
+
+    // FIX 8: Heartbeat to keep online status fresh
+    setInterval(() => {
+        if (socket.connected) {
+            socket.emit('heartbeat', { name: userName });
+        }
+    }, 5000);
+
+    // FIX 9: Server sends an ARRAY not a dict
     socket.on('online_users', (users) => {
         renderOnlineUsers(users);
         renderDMUsers(users);
@@ -1218,27 +1347,39 @@
 
     socket.on('new_private_message', async (data) => {
         let displayContent = data.content;
-        if (data.content.startsWith('enc:') && sharedKey) {
+        if (data.type === 'audio') {
+            // FIX 10: For audio messages, content is the filepath — don't try to decrypt
+            displayContent = data.content;
+        } else if (data.content && data.content.startsWith('enc:') && sharedKey) {
             displayContent = await decryptMessage(data.content, sharedKey);
         }
+
+        let displayReplyContent = data.reply_to_content;
+        if (displayReplyContent && displayReplyContent.startsWith('enc:') && sharedKey) {
+            displayReplyContent = await decryptMessage(displayReplyContent, sharedKey);
+        }
+
         appendMessage({
             id: data.id,
             sender: data.sender,
             type: data.type || 'text',
             content: displayContent,
             time: data.time,
-            edited: data.edited || false,
-            deleted: data.deleted || false
+            edited: false,
+            deleted: false,
+            reply_to_id: data.reply_to_id,
+            reply_to_user: data.reply_to_user,
+            reply_to_content: displayReplyContent
         });
         updateCount();
     });
 
     socket.on('private_message_edited', async (data) => {
-        const msg = document.querySelector(`.message[data-id="${data.id}"]`);
+        const msg = document.querySelector('.message[data-id="' + data.id + '"]');
         if (!msg) return;
         const bubble = msg.querySelector('.text-content');
         let displayContent = data.content;
-        if (data.content.startsWith('enc:') && sharedKey) {
+        if (data.content && data.content.startsWith('enc:') && sharedKey) {
             displayContent = await decryptMessage(data.content, sharedKey);
         }
         if (bubble) bubble.textContent = displayContent;
@@ -1253,7 +1394,7 @@
     });
 
     socket.on('private_message_deleted', (data) => {
-        const msg = document.querySelector(`.message[data-id="${data.id}"]`);
+        const msg = document.querySelector('.message[data-id="' + data.id + '"]');
         if (!msg) return;
         const bubble = msg.querySelector('.message-bubble');
         bubble.className = 'message-bubble deleted';
@@ -1279,8 +1420,24 @@
         renderReactions(data.message_id);
     });
 
+    // FIX 11: Handle server-sent errors (e.g. permission denied)
     socket.on('error', (data) => {
-        showToast(data.message, 'error');
+        if (data && data.message) {
+            showToast(data.message, 'error');
+        }
+    });
+
+    // Show typing indicator when partner is typing
+    let typingTimeout = null;
+    socket.on('user_typing', (data) => {
+        if (!hasConversation) return;
+        const subtext = document.getElementById('chatSubtext2');
+        if (!subtext) return;
+        subtext.textContent = escapeHtml(data.user) + ' is typing…';
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            subtext.textContent = sharedKey ? '🔒 End-to-end encrypted' : '⚠️ Unencrypted';
+        }, 2000);
     });
 
     function initMessages() {
@@ -1289,8 +1446,13 @@
             const sender = msg.getAttribute('data-sender');
             if (sender === userName) {
                 msg.classList.add('own');
-                msg.querySelector('.edit-trigger')?.classList.remove('hidden');
-                msg.querySelector('.delete-trigger')?.classList.remove('hidden');
+                const editBtn = msg.querySelector('.edit-trigger');
+                const deleteBtn = msg.querySelector('.delete-trigger');
+                if (editBtn) editBtn.classList.remove('hidden');
+                if (deleteBtn) deleteBtn.classList.remove('hidden');
+            } else {
+                // FIX 12: Handle re-login — remove .own from messages that no longer match
+                msg.classList.remove('own');
             }
         });
         updateCount();
@@ -1311,16 +1473,25 @@
         activeMessageId = actions.classList.contains('visible') ? msgEl.getAttribute('data-id') : null;
     }
 
-    if (isMobile) {
-        document.getElementById('messagesArea').addEventListener('scroll', () => {
-            document.querySelectorAll('.message-actions.visible').forEach(el => el.classList.remove('visible'));
-        });
+    // FIX 13: Guard against missing messagesArea when no conversation is active
+    if (isMobile && hasConversation) {
+        const area = document.getElementById('messagesArea');
+        if (area) {
+            area.addEventListener('scroll', () => {
+                document.querySelectorAll('.message-actions.visible').forEach(el => el.classList.remove('visible'));
+            });
+        }
     }
 
     async function sendMessage() {
         const input = document.getElementById('messageInput');
+        if (!input) return;
         const text = input.value.trim();
         if (!text) return;
+        if (!partnerName) {
+            showToast('Select a user to chat with first', 'error');
+            return;
+        }
 
         let messageToSend = text;
         if (sharedKey) {
@@ -1334,7 +1505,7 @@
                 );
                 const ciphertextBase64 = arrayBufferToBase64(ciphertextBuffer);
                 const ivBase64 = arrayBufferToBase64(iv);
-                messageToSend = `enc:${ivBase64}:${ciphertextBase64}`;
+                messageToSend = 'enc:' + ivBase64 + ':' + ciphertextBase64;
             } catch (e) {
                 console.error("Encryption failed, sending as plaintext:", e);
             }
@@ -1344,15 +1515,21 @@
             sender: userName,
             receiver: partnerName,
             message: messageToSend,
-            conversation_id: conversationId
+            conversation_id: conversationId,
+            reply_to_id: currentReplyToId
         });
 
+        cancelReply();
         input.value = '';
         input.style.height = 'auto';
         if (isMobile) input.blur();
     }
 
     async function toggleRecording() {
+        if (!hasConversation || !conversationId) {
+            showToast('Start a conversation first', 'error');
+            return;
+        }
         const btn = document.getElementById('micBtn');
         const indicator = document.getElementById('recIndicator');
 
@@ -1368,13 +1545,14 @@
                     formData.append('audio', blob, 'recording.webm');
                     formData.append('sender', userName);
                     formData.append('receiver', partnerName);
-                    formData.append('conversation_id', conversationId);
+                    formData.append('conversation_id', conversationId || '');
                     formData.append('sid', socket.id);
                     try {
-                        await fetch('/upload_private_audio', { method: 'POST', body: formData });
+                        const resp = await fetch('/upload_private_audio', { method: 'POST', body: formData });
+                        if (!resp.ok) throw new Error('Server returned ' + resp.status);
                         showToast('Audio sent', 'success');
                     } catch (err) {
-                        showToast('Failed to upload audio', 'error');
+                        showToast('Failed to upload audio: ' + err.message, 'error');
                     }
                     stream.getTracks().forEach(t => t.stop());
                 };
@@ -1394,7 +1572,8 @@
     }
 
     function startEdit(id) {
-        const msg = document.querySelector(`.message[data-id="${id}"]`);
+        const msg = document.querySelector('.message[data-id="' + id + '"]');
+        if (!msg) return;
         const bubble = msg.querySelector('.text-content');
         if (!bubble) return;
         const original = bubble.textContent;
@@ -1405,7 +1584,11 @@
         bubble.replaceWith(ta);
         ta.focus();
 
+        // FIX 14: Guard against double-save
+        let saved = false;
         async function save() {
+            if (saved) return;
+            saved = true;
             const val = ta.value.trim();
             if (val && val !== original) {
                 let contentToSend = val;
@@ -1420,7 +1603,7 @@
                         );
                         const ciphertextBase64 = arrayBufferToBase64(ciphertextBuffer);
                         const ivBase64 = arrayBufferToBase64(iv);
-                        contentToSend = `enc:${ivBase64}:${ciphertextBase64}`;
+                        contentToSend = 'enc:' + ivBase64 + ':' + ciphertextBase64;
                     } catch (e) {
                         console.error("Encryption failed on edit:", e);
                     }
@@ -1430,7 +1613,7 @@
             const newBubble = document.createElement('div');
             newBubble.className = 'text-content';
             newBubble.textContent = val || original;
-            ta.replaceWith(newBubble);
+            if (ta.parentNode) ta.replaceWith(newBubble);
         }
 
         ta.addEventListener('blur', save);
@@ -1438,6 +1621,14 @@
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 ta.blur();
+            }
+            // FIX 15: Escape to cancel edit
+            if (e.key === 'Escape') {
+                saved = true;
+                const newBubble = document.createElement('div');
+                newBubble.className = 'text-content';
+                newBubble.textContent = original;
+                if (ta.parentNode) ta.replaceWith(newBubble);
             }
         });
     }
@@ -1447,7 +1638,7 @@
         socket.emit('delete_private_message', { message_id: id, user: userName });
     }
 
-    const COMMON_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👏'];
+    const COMMON_EMOJIS = ['\uD83D\uDC4D', '\u2764\uFE0F', '\uD83D\uDE02', '\uD83D\uDE2E', '\uD83D\uDE22', '\uD83C\uDF89', '\uD83D\uDD25', '\uD83D\uDC4F'];
 
     function openEmojiPicker(event, messageId) {
         event.stopPropagation();
@@ -1467,19 +1658,46 @@
             popup.appendChild(btn);
         });
 
-        const rect = event.currentTarget.getBoundingClientRect();
-        if (isMobile) {
-            popup.style.left = '50%';
-            popup.style.top = 'auto';
-            popup.style.bottom = '80px';
-            popup.style.transform = 'translateX(-50%)';
-        } else {
-            popup.style.left = rect.left + 'px';
-            popup.style.top = (rect.top - popup.offsetHeight - 8) + 'px';
-            popup.style.transform = 'none';
+        const triggerBtn = event.currentTarget;
+        const rect = triggerBtn.getBoundingClientRect();
+        
+        // Temporarily clear hidden class and display as grid to accurately measure dimensions
+        const origDisplay = popup.style.display;
+        popup.style.display = 'grid';
+        const popupWidth = popup.offsetWidth || 180;
+        const popupHeight = popup.offsetHeight || 96;
+        popup.style.display = origDisplay;
+
+        // Calculate centering above the reaction button
+        let left = rect.left + (rect.width / 2) - (popupWidth / 2);
+        let top = rect.top - popupHeight - 8;
+
+        // Horizontally bind to visible viewport
+        const boundaryMargin = 12;
+        if (left < boundaryMargin) {
+            left = boundaryMargin;
+        } else if (left + popupWidth > window.innerWidth - boundaryMargin) {
+            left = window.innerWidth - popupWidth - boundaryMargin;
         }
 
+        // Vertically bind (show below if not enough space above)
+        if (top < boundaryMargin) {
+            top = rect.bottom + 8;
+        }
+
+        popup.style.left = left + 'px';
+        popup.style.top = top + 'px';
+        popup.style.bottom = 'auto';
+        popup.style.transform = 'none';
+
+        // Auto-close on click anywhere
         setTimeout(() => document.addEventListener('click', closeEmojiPicker, { once: true }), 0);
+
+        // Auto-close on scrolling the message box
+        const area = document.getElementById('messagesArea');
+        if (area) {
+            area.addEventListener('scroll', closeEmojiPicker, { once: true });
+        }
     }
 
     function closeEmojiPicker() {
@@ -1497,7 +1715,7 @@
     }
 
     function renderReactions(messageId) {
-        const bar = document.querySelector(`.reactions-bar[data-message-id="${messageId}"]`);
+        const bar = document.querySelector('.reactions-bar[data-message-id="' + messageId + '"]');
         if (!bar) return;
         const list = messageReactions[messageId] || [];
         const grouped = {};
@@ -1507,23 +1725,37 @@
             grouped[r.emoji].users.push(r.user);
         });
 
-        bar.innerHTML = Object.entries(grouped).map(([emoji, data]) => {
+        bar.innerHTML = Object.entries(grouped).map(function(entry) {
+            const emoji = entry[0];
+            const data = entry[1];
             const active = data.users.includes(userName) ? 'active' : '';
-            return `<div class="reaction ${active}" onclick="toggleReaction(${messageId}, '${emoji}')">
-                <span>${emoji}</span>
-                <span class="reaction-count">${data.count}</span>
-            </div>`;
+            return '<div class="reaction ' + active + '" onclick="toggleReaction(' + messageId + ', \'' + emoji + '\')">' +
+                '<span>' + emoji + '</span>' +
+                '<span class="reaction-count">' + data.count + '</span>' +
+            '</div>';
         }).join('');
     }
 
-    function appendMessage({ id, sender, type, content, time, edited, deleted }) {
+    function appendMessage(data) {
+        const id = data.id;
+        const sender = data.sender;
+        const type = data.type;
+        const content = data.content;
+        const time = data.time;
+        const edited = data.edited;
+        const deleted = data.deleted;
+        const reply_to_id = data.reply_to_id;
+        const reply_to_user = data.reply_to_user;
+        const reply_to_content = data.reply_to_content;
+
         const area = document.getElementById('messagesArea');
+        if (!area) return;
         const empty = document.getElementById('emptyState');
         if (empty) empty.remove();
 
         const isOwn = sender === userName;
         const div = document.createElement('div');
-        div.className = `message ${isOwn ? 'own' : ''}`;
+        div.className = 'message' + (isOwn ? ' own' : '');
         div.setAttribute('data-id', id);
         div.setAttribute('data-sender', sender);
         div.setAttribute('data-type', type);
@@ -1531,52 +1763,116 @@
         div.setAttribute('data-deleted', deleted);
         if (isMobile) div.setAttribute('onclick', 'toggleMessageActions(this)');
 
+        let replyHtml = '';
+        if (reply_to_id) {
+            let displayReply = reply_to_content || '';
+            if (displayReply.toLowerCase().endsWith('.webm') || displayReply.toLowerCase().includes('recording')) {
+                displayReply = '🎤 Voice Message';
+            }
+            replyHtml = '<div class="reply-quote" onclick="scrollToMessage(' + reply_to_id + ')" style="background: rgba(0,0,0,0.15); border-left: 3px solid var(--primary, #3b82f6); padding: 0.35rem 0.6rem; font-size: 0.8rem; margin-bottom: 0.5rem; cursor: pointer; border-radius: 4px; opacity: 0.85; text-align: left;">' +
+                '<strong>@' + escapeHtml(reply_to_user || 'User') + '</strong>: <span class="encrypted-reply-content" data-id="' + reply_to_id + '">' + escapeHtml(displayReply) + '</span>' +
+            '</div>';
+        }
+
         let bubbleContent = '';
         if (deleted) {
             bubbleContent = '<em>This message was deleted</em>';
         } else if (type === 'audio') {
+            // FIX 16: URL-encode audio filename for spaces/special chars
             const audioFilename = content.split(/[\\/]/).pop();
-            bubbleContent = `<audio controls src="/audio/${escapeHtml(audioFilename)}"></audio>`;
+            bubbleContent = replyHtml + '<audio controls src="/audio/' + encodeURIComponent(audioFilename) + '"></audio>';
         } else {
-            bubbleContent = `<div class="text-content">${escapeHtml(content)}</div>`;
+            bubbleContent = replyHtml + '<div class="text-content">' + escapeHtml(content) + '</div>';
         }
 
-        const actionsHtml = (!deleted && isOwn) ? `
-            <button class="action-btn" onclick="openEmojiPicker(event, ${id})" title="React">😊</button>
-            <button class="action-btn" onclick="startEdit(${id})" title="Edit">✏️</button>
-            <button class="action-btn" onclick="deleteMessage(${id})" title="Delete">🗑️</button>
-        ` : (deleted ? '' : `
-            <button class="action-btn" onclick="openEmojiPicker(event, ${id})" title="React">😊</button>
-        `);
+        let actionsHtml = '';
+        if (!deleted) {
+            const replyAction = '<button class="action-btn" onclick="setReplyTarget(' + id + ', \'' + escapeHtml(sender || 'Anonymous').replace(/'/g, "\\'") + '\', \'' + escapeHtml(content || '').replace(/'/g, "\\'") + '\')" title="Reply">↩️</button>';
+            if (isOwn) {
+                actionsHtml =
+                    '<button class="action-btn" onclick="openEmojiPicker(event, ' + id + ')" title="React">\uD83D\uDE0A</button>' +
+                    replyAction +
+                    '<button class="action-btn" onclick="startEdit(' + id + ')" title="Edit">\u270F\uFE0F</button>' +
+                    '<button class="action-btn" onclick="deleteMessage(' + id + ')" title="Delete">\uD83D\uDDD1\uFE0F</button>';
+            } else {
+                actionsHtml =
+                    '<button class="action-btn" onclick="openEmojiPicker(event, ' + id + ')" title="React">\uD83D\uDE0A</button>' +
+                    replyAction;
+            }
+        }
 
-        const actionsAttr = isMobile ? `onclick="event.stopPropagation()"` : '';
-
-        div.innerHTML = `
-            <div class="message-avatar">${(sender || 'A').charAt(0).toUpperCase()}</div>
-            <div class="message-body">
-                <div class="message-meta">
-                    <span class="message-author">${escapeHtml(sender || 'Anonymous')}</span>
-                    <span>${time || new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                    ${edited ? '<span class="edited-badge">edited</span>' : ''}
-                </div>
-                <div class="message-bubble ${deleted ? 'deleted' : ''}">${bubbleContent}</div>
-                <div class="reactions-bar" data-message-id="${id}"></div>
-            </div>
-            ${actionsHtml ? `<div class="message-actions" ${actionsAttr}>${actionsHtml}</div>` : ''}
-        `;
+        div.innerHTML =
+            '<div class="message-avatar">' + (sender || 'A').charAt(0).toUpperCase() + '</div>' +
+            '<div class="message-body">' +
+                '<div class="message-meta">' +
+                    '<span class="message-author">' + escapeHtml(sender || 'Anonymous') + '</span>' +
+                    '<span>' + (time || new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})) + '</span>' +
+                    (edited ? '<span class="edited-badge">edited</span>' : '') +
+                '</div>' +
+                '<div class="message-bubble' + (deleted ? ' deleted' : '') + '">' + bubbleContent + '</div>' +
+                '<div class="reactions-bar" data-message-id="' + id + '"></div>' +
+                '</div>' +
+            (actionsHtml ? '<div class="message-actions" onclick="event.stopPropagation()">' + actionsHtml + '</div>' : '');
 
         area.appendChild(div);
         scrollToBottom();
     }
 
     function updateCount() {
+        const el = document.getElementById('msgCount');
+        if (!el) return;
         const count = document.querySelectorAll('.message').length;
-        document.getElementById('msgCount').textContent = count;
+        el.textContent = count + ' message' + (count !== 1 ? 's' : '');
     }
 
     function scrollToBottom() {
         const area = document.getElementById('messagesArea');
+        if (!area) return;
         area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+    }
+
+    function setReplyTarget(messageId, sender, content) {
+        currentReplyToId = messageId;
+        const replyUserEl = document.getElementById('replyUser');
+        const replyTextEl = document.getElementById('replyText');
+        const replyIndicatorEl = document.getElementById('replyIndicator');
+        if (replyUserEl) replyUserEl.textContent = '@' + sender;
+        
+        let displayContent = content;
+        const msgEl = document.querySelector('.message[data-id="' + messageId + '"]');
+        if (msgEl) {
+            const textEl = msgEl.querySelector('.text-content');
+            if (textEl) {
+                displayContent = textEl.textContent.trim();
+            } else {
+                const audioEl = msgEl.querySelector('audio');
+                if (audioEl) {
+                    displayContent = '🎤 Voice Message';
+                }
+            }
+        }
+        if (replyTextEl) replyTextEl.textContent = displayContent;
+        if (replyIndicatorEl) replyIndicatorEl.style.display = 'flex';
+        
+        const input = document.getElementById('messageInput');
+        if (input) input.focus();
+    }
+
+    function cancelReply() {
+        currentReplyToId = null;
+        const replyIndicatorEl = document.getElementById('replyIndicator');
+        if (replyIndicatorEl) replyIndicatorEl.style.display = 'none';
+    }
+
+    function scrollToMessage(messageId) {
+        const el = document.querySelector(`.message[data-id="${messageId}"]`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+            setTimeout(() => {
+                el.style.backgroundColor = '';
+            }, 2000);
+        }
     }
 
     function handleKeydown(e) {
@@ -1586,11 +1882,18 @@
         }
     }
 
+    // FIX 17: Guard textarea auto-resize when element exists
     const textarea = document.getElementById('messageInput');
-    textarea.addEventListener('input', function() {
-        this.style.height = 'auto';
-        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-    });
+    if (textarea) {
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            // Emit typing event to partner
+            if (partnerName && socket.connected) {
+                socket.emit('typing', { sender: userName, receiver: partnerName });
+            }
+        });
+    }
 
     // Sidebar controls
     function openSidebar() {
@@ -1628,10 +1931,11 @@
         if (e.key === 'Escape') closeSidebar();
     });
 
-    // Render online users in sidebar widget
+    // FIX 18: Server sends an ARRAY, not a dict
     function renderOnlineUsers(users) {
         const container = document.getElementById('userList');
-        const count = Object.keys(users).length;
+        const list = Array.isArray(users) ? users : [];
+        const count = list.length;
         document.getElementById('onlineCount').textContent = count;
 
         if (count === 0) {
@@ -1639,32 +1943,34 @@
             return;
         }
 
-        container.innerHTML = Object.entries(users).map(([id, data]) => `
-            <div class="user-chip" title="IP: ${data.ip || 'unknown'}">
-                <div class="user-avatar">${(data.name || 'A').charAt(0).toUpperCase()}</div>
-                <span class="user-name">${escapeHtml(data.name || 'Anonymous')}</span>
-                <span class="status-dot"></span>
-            </div>
-        `).join('');
+        container.innerHTML = list.map((data) =>
+            '<div class="user-chip" title="IP: ' + escapeHtml(data.ip || 'unknown') + '">' +
+                '<div class="user-avatar">' + (data.name || 'A').charAt(0).toUpperCase() + '</div>' +
+                '<span class="user-name">' + escapeHtml(data.name || 'Anonymous') + '</span>' +
+                '<span class="status-dot"></span>' +
+            '</div>'
+        ).join('');
     }
 
-    // Render DM-able users in sidebar nav
+    // FIX 19: Same array fix for DM user list
     function renderDMUsers(users) {
         const container = document.getElementById('onlineUsersList');
-        const others = Object.values(users).filter(u => u.name !== userName);
+        if (!container) return;
+        const list = Array.isArray(users) ? users : [];
+        const others = list.filter(u => u.name !== userName);
 
         if (others.length === 0) {
             container.innerHTML = '<div style="font-size:0.8125rem;opacity:0.5;padding:0.5rem 0.75rem;">No one else online</div>';
             return;
         }
 
-        container.innerHTML = others.map(data => `
-            <a href="/dm/start_dm/${encodeURIComponent(data.name)}" class="nav-item" style="padding:0.5rem 0.75rem;">
-                <div class="user-avatar" style="width:20px;height:20px;font-size:0.5rem;">${(data.name || 'A').charAt(0).toUpperCase()}</div>
-                <span>${escapeHtml(data.name || 'Anonymous')}</span>
-                <span class="status-dot" style="margin-left:auto;width:6px;height:6px;"></span>
-            </a>
-        `).join('');
+        container.innerHTML = others.map(data =>
+            '<a href="/dm/start_dm/' + encodeURIComponent(data.name) + '" class="nav-item" style="padding:0.5rem 0.75rem;">' +
+                '<div class="user-avatar" style="width:20px;height:20px;font-size:0.5rem;">' + (data.name || 'A').charAt(0).toUpperCase() + '</div>' +
+                '<span>' + escapeHtml(data.name || 'Anonymous') + '</span>' +
+                '<span class="status-dot" style="margin-left:auto;width:6px;height:6px;"></span>' +
+            '</a>'
+        ).join('');
     }
 
     function escapeHtml(text) {
@@ -1673,23 +1979,250 @@
         return div.innerHTML;
     }
 
-    function showToast(message, type = 'info') {
+    function showToast(message, type) {
+        type = type || 'info';
         const container = document.getElementById('toastContainer');
         const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
+        toast.className = 'toast ' + type;
         const icon = type === 'error'
             ? '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>'
             : (type === 'success'
                 ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>'
                 : '<path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>');
-        toast.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">${icon}</svg>${escapeHtml(message)}`;
+        toast.innerHTML = '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' + icon + '</svg>' + escapeHtml(message);
         container.appendChild(toast);
         setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'translateX(100%)';
+            toast.style.transition = 'all 0.3s ease';
             setTimeout(() => toast.remove(), 300);
         }, 4000);
     }
+
+    // ── WebRTC Voice Call logic ───────────────────────────
+    let peerConnection = null;
+    let localStream = null;
+    let isCalling = false;
+
+    const startCallBtn = document.getElementById('startCallBtn');
+    const endCallBtn = document.getElementById('endCallBtn');
+    const callStatusBadge = document.getElementById('callStatusBadge');
+    const incomingCallModal = document.getElementById('incomingCallModal');
+    const incomingCallUser = document.getElementById('incomingCallUser');
+    const acceptCallBtn = document.getElementById('acceptCallBtn');
+    const declineCallBtn = document.getElementById('declineCallBtn');
+    const remoteAudio = document.getElementById('remoteAudio');
+
+    const rtcConfig = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' }
+        ]
+    };
+
+    if (partnerName) {
+        startCallBtn.style.display = 'inline-flex';
+        startCallBtn.addEventListener('click', startVoiceCall);
+    }
+
+    endCallBtn.addEventListener('click', endVoiceCall);
+
+    async function getLocalAudioStream() {
+        try {
+            return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        } catch (err) {
+            showToast('Cannot access microphone. Please check permissions.', 'error');
+            throw err;
+        }
+    }
+
+    async function createPeerConnection() {
+        peerConnection = new RTCPeerConnection(rtcConfig);
+
+        // Add local tracks to peer connection
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+
+        // Set remote stream source
+        peerConnection.ontrack = (event) => {
+            if (event.streams && event.streams[0]) {
+                remoteAudio.srcObject = event.streams[0];
+            }
+        };
+
+        // ICE candidate handler
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate && socket && socket.connected) {
+                socket.emit('ice_candidate', {
+                    sender: userName,
+                    receiver: partnerName,
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        // Handle connection state changes
+        peerConnection.onconnectionstatechange = () => {
+            console.log('RTCPeerConnection state:', peerConnection.connectionState);
+            if (peerConnection.connectionState === 'connected') {
+                callStatusBadge.textContent = 'Active Call';
+                callStatusBadge.style.background = '#28a745';
+                callStatusBadge.style.color = '#fff';
+            } else if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
+                endVoiceCall();
+            }
+        };
+    }
+
+    async function startVoiceCall() {
+        if (isCalling) return;
+        isCalling = true;
+        
+        startCallBtn.style.display = 'none';
+        endCallBtn.style.display = 'inline-flex';
+        callStatusBadge.style.display = 'inline-block';
+        callStatusBadge.textContent = 'Calling...';
+        callStatusBadge.style.background = '#ffc107';
+        callStatusBadge.style.color = '#111';
+
+        try {
+            localStream = await getLocalAudioStream();
+            await createPeerConnection();
+            
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            socket.emit('call_user', {
+                sender: userName,
+                receiver: partnerName,
+                offer: offer
+            });
+        } catch (err) {
+            console.error('Error starting call:', err);
+            cleanupCall();
+        }
+    }
+
+    function endVoiceCall() {
+        if (socket && socket.connected) {
+            socket.emit('end_call', {
+                sender: userName,
+                receiver: partnerName
+            });
+        }
+        cleanupCall();
+    }
+
+    function cleanupCall() {
+        isCalling = false;
+        
+        if (peerConnection) {
+            peerConnection.close();
+            peerConnection = null;
+        }
+
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+
+        remoteAudio.srcObject = null;
+        
+        if (partnerName) {
+            startCallBtn.style.display = 'inline-flex';
+        }
+        endCallBtn.style.display = 'none';
+        callStatusBadge.style.display = 'none';
+    }
+
+    // ── Incoming Signaling Events ───────────────────────
+
+    let pendingOffer = null;
+    let callingPeer = '';
+
+    socket.on('incoming_call', async (data) => {
+        pendingOffer = data.offer;
+        callingPeer = data.sender;
+        incomingCallUser.textContent = callingPeer;
+        incomingCallModal.style.display = 'flex';
+    });
+
+    acceptCallBtn.addEventListener('click', async () => {
+        incomingCallModal.style.display = 'none';
+        
+        startCallBtn.style.display = 'none';
+        endCallBtn.style.display = 'inline-flex';
+        callStatusBadge.style.display = 'inline-block';
+        callStatusBadge.textContent = 'Answering...';
+        callStatusBadge.style.background = '#ffc107';
+        callStatusBadge.style.color = '#111';
+
+        try {
+            localStream = await getLocalAudioStream();
+            await createPeerConnection();
+
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+
+            socket.emit('call_response', {
+                sender: userName,
+                receiver: callingPeer,
+                answer: answer,
+                status: 'accepted'
+            });
+            
+            isCalling = true;
+        } catch (err) {
+            console.error('Error accepting call:', err);
+            socket.emit('call_response', {
+                sender: userName,
+                receiver: callingPeer,
+                status: 'failed'
+            });
+            cleanupCall();
+        }
+    });
+
+    declineCallBtn.addEventListener('click', () => {
+        incomingCallModal.style.display = 'none';
+        socket.emit('call_response', {
+            sender: userName,
+            receiver: callingPeer,
+            status: 'declined'
+        });
+        pendingOffer = null;
+        callingPeer = '';
+    });
+
+    socket.on('call_answered', async (data) => {
+        if (data.status === 'accepted') {
+            callStatusBadge.textContent = 'Connecting...';
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            } catch (err) {
+                console.error('Error setting remote description:', err);
+                endVoiceCall();
+            }
+        } else {
+            showToast(`Call was ${data.status}.`, 'info');
+            cleanupCall();
+        }
+    });
+
+    socket.on('new_ice_candidate', async (data) => {
+        if (peerConnection) {
+            try {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch (err) {
+                console.error('Error adding ICE candidate:', err);
+            }
+        }
+    });
+
+    socket.on('call_ended', () => {
+        cleanupCall();
+    });
 </script>
 
 </body>
