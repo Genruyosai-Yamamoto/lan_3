@@ -552,7 +552,7 @@ def start_dm(target_user):
 
 @socketio.on("typing")
 def typing(data):
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
     if not username or data.get("sender") != username:
         return
     room = get_dm_room(data["sender"], data["receiver"])
@@ -561,19 +561,24 @@ def typing(data):
 
 @socketio.on("join_dm")
 def join_dm(data):
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
+    print(f"DEBUG JOIN_DM: session/sid username={username}, data={data}", flush=True)
     # Security fix: prevent users from joining other users' private DM rooms
     if not username or username not in [data.get("user1"), data.get("user2")]:
+        print(f"DEBUG JOIN_DM: check failed! username={username}, user1={data.get('user1')}, user2={data.get('user2')}", flush=True)
         return
     room = get_dm_room(data["user1"], data["user2"])
     join_room(room)
+    print(f"DEBUG JOIN_DM: joined room {room}", flush=True)
 
 
 @socketio.on("send_private_message")
 def send_private_message(data):
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
+    print(f"DEBUG SEND_PRIVATE_MESSAGE: session/sid username={username}, data={data}", flush=True)
     # Security fix: prevent message sender spoofing
     if not username or data.get("sender") != username:
+        print(f"DEBUG SEND_PRIVATE_MESSAGE: spoofing check failed! username={username}, sender={data.get('sender')}", flush=True)
         return
 
     room = get_dm_room(data["sender"], data["receiver"])
@@ -597,7 +602,8 @@ def send_private_message(data):
             msg.conversation_id = convo.id
             db.session.commit()
 
-    socketio.emit("new_private_message", {
+    print(f"DEBUG SEND_PRIVATE_MESSAGE: emitting to room {room}", flush=True)
+    emit("new_private_message", {
         "id": msg.id,
         "sender": msg.sender,
         "receiver": msg.receiver,
@@ -619,7 +625,7 @@ def handle_edit_private_message(data):
         return
 
     # Security fix: authenticate sender from session
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
     if not username or msg.sender != username:
         emit("error", {"message": "You can only edit your own messages."})
         return
@@ -629,7 +635,7 @@ def handle_edit_private_message(data):
     db.session.commit()
 
     room = get_dm_room(msg.sender, msg.receiver)
-    socketio.emit("private_message_edited", {
+    emit("private_message_edited", {
         "id": msg.id, "content": msg.content, "edited": True
     }, room=room)
 
@@ -642,7 +648,7 @@ def handle_delete_private_message(data):
         return
 
     # Security fix: authenticate sender from session
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
     if not username or msg.sender != username:
         emit("error", {"message": "You can only delete your own messages."})
         return
@@ -651,7 +657,7 @@ def handle_delete_private_message(data):
     db.session.commit()
 
     room = get_dm_room(msg.sender, msg.receiver)
-    socketio.emit("private_message_deleted", {
+    emit("private_message_deleted", {
         "id": msg.id, "deleted": True
     }, room=room)
 
@@ -660,7 +666,7 @@ def handle_delete_private_message(data):
 def handle_private_reaction(data):
     message_id = data.get("message_id")
     emoji = data.get("emoji")
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
 
     if not username or data.get("user") != username:
         return
@@ -682,7 +688,7 @@ def handle_private_reaction(data):
     db.session.commit()
 
     room = get_dm_room(msg.sender, msg.receiver)
-    socketio.emit("private_reaction_added", {
+    emit("private_reaction_added", {
         "message_id": message_id, "emoji": emoji, "user": username
     }, room=room)
 
@@ -691,7 +697,7 @@ def handle_private_reaction(data):
 def handle_remove_private_reaction(data):
     message_id = data.get("message_id")
     emoji = data.get("emoji")
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
 
     if not username or data.get("user") != username:
         return
@@ -710,7 +716,7 @@ def handle_remove_private_reaction(data):
     db.session.commit()
 
     room = get_dm_room(msg.sender, msg.receiver)
-    socketio.emit("private_reaction_removed", {
+    emit("private_reaction_removed", {
         "message_id": message_id, "emoji": emoji, "user": username
     }, room=room)
 
@@ -721,7 +727,7 @@ def handle_remove_private_reaction(data):
 
 @socketio.on("call_user")
 def handle_call_user(data):
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
     if not username or data.get("sender") != username:
         return
     room = get_dm_room(data["sender"], data["receiver"])
@@ -733,7 +739,7 @@ def handle_call_user(data):
 
 @socketio.on("call_response")
 def handle_call_response(data):
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
     if not username or data.get("sender") != username:
         return
     room = get_dm_room(data["sender"], data["receiver"])
@@ -746,7 +752,7 @@ def handle_call_response(data):
 
 @socketio.on("ice_candidate")
 def handle_ice_candidate(data):
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
     if not username or data.get("sender") != username:
         return
     room = get_dm_room(data["sender"], data["receiver"])
@@ -758,7 +764,7 @@ def handle_ice_candidate(data):
 
 @socketio.on("end_call")
 def handle_end_call(data):
-    username = session.get("username")
+    username = sid_to_username.get(request.sid) or session.get("username")
     if not username or data.get("sender") != username:
         return
     room = get_dm_room(data["sender"], data["receiver"])

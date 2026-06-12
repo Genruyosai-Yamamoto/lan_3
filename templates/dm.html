@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0b1121">
     <title>FileShare Pro — Direct Chat</title>
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -1305,6 +1305,9 @@
             sessionStorage.setItem('fs_username', userName);
             document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
             socket.emit('user_online', { name: userName });
+            if (partnerName) {
+                socket.emit('join_dm', { user1: userName, user2: partnerName });
+            }
             ensureEncryptionKeys(userName);
             document.getElementById('chatSubtext').textContent = 'Connected as ' + userName;
             initMessages();
