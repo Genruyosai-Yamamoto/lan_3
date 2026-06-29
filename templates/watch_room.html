@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ party.title }} — Watch Party</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-light: #e0e7ff;
+            --bg: #0f0f1a;
+            --surface: #1a1a2e;
+            --surface-2: #16213e;
+            --text: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --border: #2d2d44;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --accent: #8b5cf6;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3);
+            --shadow-lg: 0 10px 25px -5px rgb(0 0 0 / 0.4);
+            --radius: 12px;
+            --chat-width: 380px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .watch-app {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* ---- Video Area ---- */
+        .video-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .video-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1.25rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .video-topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-width: 0;
+        }
+
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: none;
+            color: var(--text-secondary);
+            font-size: 0.8125rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            flex-shrink: 0;
+        }
+        .back-btn:hover { background: var(--surface-2); color: var(--text); }
+
+        .party-title-bar {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .party-title-bar h1 {
+            font-size: 1rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .party-title-bar .party-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .live-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #ef4444; display: inline-block;
+            animation: blink 1.2s infinite;
+        }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .video-topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-shrink: 0;
+        }
+
+        .viewer-count {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.375rem 0.75rem;
+            border-radius: 8px;
+            background: rgba(139,92,246,0.15);
+            color: var(--accent);
+            font-size: 0.8125rem;
+            font-weight: 600;
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8125rem;
+            font-weight: 600; border: none; cursor: pointer; transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-ghost { background: none; color: var(--text-secondary); border: 1px solid var(--border); }
+        .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+        .btn-accent { background: var(--accent); color: white; }
+        .btn-accent:hover { background: #7c3aed; }
+
+        /* Video container */
+        .video-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            position: relative;
+            min-height: 0;
+        }
+
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .sync-overlay {
+            position: absolute;
+            top: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(8px);
+            color: white;
+            padding: 0.5rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .sync-overlay.visible { opacity: 1; }
+
+        .host-badge {
+            padding: 0.25rem 0.625rem;
+            border-radius: 6px;
+            background: rgba(139,92,246,0.2);
+            color: var(--accent);
+            font-size: 0.6875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .viewer-badge {
+            padding: 0.25rem 0.625rem;
+            border-radius: 6px;
+            background: rgba(16,185,129,0.2);
+            color: var(--success);
+            font-size: 0.6875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* ---- Chat Sidebar ---- */
+        .chat-sidebar {
+            width: var(--chat-width);
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            transition: transform 0.3s ease, width 0.3s ease;
+        }
+
+        .chat-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .chat-header h3 {
+            font-size: 0.9375rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chat-toggle {
+            width: 32px; height: 32px; border-radius: 8px; border: none;
+            background: var(--surface-2); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--text-secondary); transition: all 0.2s;
+        }
+        .chat-toggle:hover { color: var(--text); background: var(--border); }
+
+        .viewers-bar {
+            padding: 0.75rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .viewers-label {
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        .viewers-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.375rem;
+        }
+        .viewer-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.625rem;
+            border-radius: 6px;
+            background: var(--surface-2);
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .viewer-chip .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--success);
+        }
+        .viewer-chip.host { border: 1px solid var(--accent); }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.625rem;
+        }
+
+        .chat-msg {
+            max-width: 90%;
+            padding: 0.625rem 0.875rem;
+            border-radius: 12px;
+            font-size: 0.8125rem;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+        .chat-msg.system {
+            align-self: center;
+            background: rgba(139,92,246,0.1);
+            color: var(--accent);
+            font-size: 0.75rem;
+            font-weight: 500;
+            max-width: 100%;
+            text-align: center;
+        }
+        .chat-msg.other {
+            align-self: flex-start;
+            background: var(--surface-2);
+        }
+        .chat-msg.self {
+            align-self: flex-end;
+            background: var(--primary);
+            color: white;
+        }
+        .chat-msg-user {
+            font-weight: 600;
+            font-size: 0.6875rem;
+            color: var(--accent);
+            margin-bottom: 0.125rem;
+        }
+        .chat-msg.self .chat-msg-user { color: rgba(255,255,255,0.7); }
+        .chat-msg-time {
+            font-size: 0.625rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+        .chat-msg.self .chat-msg-time { color: rgba(255,255,255,0.5); }
+
+        .chat-input-area {
+            padding: 0.875rem 1.25rem;
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .chat-input-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .chat-input {
+            flex: 1;
+            padding: 0.625rem 1rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            color: var(--text);
+            font-size: 0.8125rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .chat-input:focus { border-color: var(--primary); }
+        .chat-input::placeholder { color: var(--text-secondary); }
+        .chat-send {
+            width: 40px; height: 40px; border-radius: 10px;
+            background: var(--primary); color: white; border: none;
+            cursor: pointer; display: flex; align-items: center;
+            justify-content: center; transition: all 0.2s; flex-shrink: 0;
+        }
+        .chat-send:hover { background: var(--primary-hover); transform: scale(1.05); }
+
+        /* Toast */
+        .toast-container { position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 110; display: flex; flex-direction: column; gap: 0.5rem; align-items: center; }
+        .toast {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 0.75rem 1.25rem;
+            box-shadow: var(--shadow-lg); display: flex; align-items: center;
+            gap: 0.5rem; font-size: 0.8125rem; font-weight: 500;
+            animation: fadeSlideIn 0.3s ease; color: var(--text);
+        }
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--danger); }
+        .toast.info { border-left: 4px solid var(--primary); }
+        @keyframes fadeSlideIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Mobile chat toggle button */
+        .mobile-chat-toggle {
+            display: none;
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            width: 56px; height: 56px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: var(--shadow-lg);
+            z-index: 50;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @media (max-width: 768px) {
+            .chat-sidebar {
+                position: fixed;
+                right: 0; top: 0; bottom: 0;
+                z-index: 60;
+                transform: translateX(100%);
+            }
+            .chat-sidebar.open { transform: translateX(0); }
+            .mobile-chat-toggle { display: flex; }
+            .video-topbar { padding: 0.5rem 0.75rem; }
+            .back-btn span { display: none; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+    </style>
+</head>
+<body>
+
+<div class="watch-app">
+    <!-- Video Area -->
+    <div class="video-area">
+        <div class="video-topbar">
+            <div class="video-topbar-left">
+                <a href="{{ url_for('watch_lobby') }}" class="back-btn">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                    <span>Back</span>
+                </a>
+                <div class="party-title-bar">
+                    <h1 id="partyTitle">{{ party.title }}</h1>
+                    <div class="party-subtitle">
+                        <span class="live-dot"></span>
+                        <span>Hosted by <strong id="hostName">{{ party.host }}</strong></span>
+                        <span id="roleTag"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="video-topbar-right">
+                <div class="viewer-count" id="viewerCount">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                    <span id="viewerNum">0</span>
+                </div>
+                <button class="btn btn-danger" id="endPartyBtn" style="display:none;" onclick="endParty()">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    End Party
+                </button>
+            </div>
+        </div>
+
+        <div class="video-container">
+            <video id="videoPlayer" preload="auto">
+                <source src="/api/watch/stream/{{ party.video }}" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            <div class="sync-overlay" id="syncOverlay">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span id="syncText">Syncing...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Sidebar -->
+    <aside class="chat-sidebar" id="chatSidebar">
+        <div class="chat-header">
+            <h3>
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                Party Chat
+            </h3>
+            <button class="chat-toggle" onclick="toggleChat()">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <div class="viewers-bar">
+            <div class="viewers-label">Watching Now</div>
+            <div class="viewers-list" id="viewersList">
+                <div class="viewer-chip"><span class="dot"></span> Connecting...</div>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <div class="chat-msg system">👋 Welcome to the watch party! Chat with other viewers here.</div>
+        </div>
+
+        <div class="chat-input-area">
+            <div class="chat-input-row">
+                <input type="text" class="chat-input" id="chatInput" placeholder="Type a message..." maxlength="500" autocomplete="off">
+                <button class="chat-send" onclick="sendChat()">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                </button>
+            </div>
+        </div>
+    </aside>
+</div>
+
+<!-- Mobile Chat Toggle -->
+<button class="mobile-chat-toggle" id="mobileChatBtn" onclick="toggleChat()">
+    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+</button>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+    // ===== Config =====
+    const PARTY_ID = "{{ party.id }}";
+    const PARTY_HOST = "{{ party.host }}";
+    const VIDEO_PATH = "{{ party.video }}";
+
+    let userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
+    sessionStorage.setItem('fs_username', userName);
+    document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
+
+    const isHost = (userName === PARTY_HOST);
+
+    // Set username session on server
+    fetch('/set_username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: userName })
+    });
+
+    // Show role tag
+    document.getElementById('roleTag').innerHTML = isHost
+        ? '<span class="host-badge">You are the Host</span>'
+        : '<span class="viewer-badge">Viewer</span>';
+
+    // Show end button for host
+    if (isHost) {
+        document.getElementById('endPartyBtn').style.display = '';
+    }
+
+    // ===== Socket.IO =====
+    const socket = io({
+        transports: ['polling', 'websocket'],
+        upgrade: true,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+    });
+
+    // ===== Video Player =====
+    const video = document.getElementById('videoPlayer');
+    let ignoreEvents = false; // Prevent feedback loops on sync
+
+    socket.on('connect', () => {
+        socket.emit('user_online', { name: userName });
+        socket.emit('join_watch_party', { party_id: PARTY_ID });
+    });
+
+    socket.on('disconnect', () => {
+        showToast('Disconnected — trying to reconnect...', 'error');
+    });
+
+    socket.on('reconnect', () => {
+        socket.emit('join_watch_party', { party_id: PARTY_ID });
+        showToast('Reconnected!', 'success');
+    });
+
+    // ===== Viewer Updates =====
+    socket.on('watch_party_joined', (party) => {
+        renderViewers(party.viewers || []);
+    });
+
+    socket.on('watch_viewer_update', (data) => {
+        if (data.party_id === PARTY_ID) {
+            renderViewers(data.viewers || []);
+        }
+    });
+
+    function renderViewers(viewers) {
+        const el = document.getElementById('viewersList');
+        document.getElementById('viewerNum').textContent = viewers.length;
+        el.innerHTML = viewers.map(v => `
+            <div class="viewer-chip ${v === PARTY_HOST ? 'host' : ''}">
+                <span class="dot"></span>
+                ${escapeHtml(v)}${v === PARTY_HOST ? ' 👑' : ''}${v === userName ? ' (you)' : ''}
+            </div>
+        `).join('');
+    }
+
+    // ===== Playback Sync =====
+    if (isHost) {
+        // Host: send sync events to viewers
+        video.addEventListener('play', () => {
+            if (ignoreEvents) return;
+            socket.emit('watch_sync', {
+                party_id: PARTY_ID,
+                action: 'play',
+                time: video.currentTime
+            });
+        });
+
+        video.addEventListener('pause', () => {
+            if (ignoreEvents) return;
+            socket.emit('watch_sync', {
+                party_id: PARTY_ID,
+                action: 'pause',
+                time: video.currentTime
+            });
+        });
+
+        video.addEventListener('seeked', () => {
+            if (ignoreEvents) return;
+            socket.emit('watch_sync', {
+                party_id: PARTY_ID,
+                action: 'seek',
+                time: video.currentTime
+            });
+        });
+
+        // Periodic time sync for drift correction (every 5s while playing)
+        setInterval(() => {
+            if (!video.paused && socket.connected) {
+                socket.emit('watch_sync', {
+                    party_id: PARTY_ID,
+                    action: 'time_update',
+                    time: video.currentTime
+                });
+            }
+        }, 5000);
+
+    } else {
+        // Viewer: receive sync events and apply
+        socket.on('watch_sync', (data) => {
+            if (data.party_id !== PARTY_ID) return;
+
+            ignoreEvents = true;
+
+            switch (data.action) {
+                case 'play':
+                    video.currentTime = data.time;
+                    video.play().catch(() => {});
+                    showSyncOverlay('▶ Playing');
+                    break;
+                case 'pause':
+                    video.currentTime = data.time;
+                    video.pause();
+                    showSyncOverlay('⏸ Paused');
+                    break;
+                case 'seek':
+                    video.currentTime = data.time;
+                    showSyncOverlay('⏩ Seeked to ' + formatTime(data.time));
+                    break;
+                case 'time_update':
+                    // Only correct drift if difference > 2 seconds
+                    const drift = Math.abs(video.currentTime - data.time);
+                    if (drift > 2) {
+                        video.currentTime = data.time;
+                        showSyncOverlay('🔄 Synced');
+                    }
+                    // Also match play/pause state
+                    if (video.paused) {
+                        video.play().catch(() => {});
+                    }
+                    break;
+            }
+
+            setTimeout(() => { ignoreEvents = false; }, 300);
+        });
+
+        // Disable controls info for viewers
+        video.addEventListener('play', (e) => {
+            if (ignoreEvents) return;
+            // Allow viewers to play/pause locally but show notification
+        });
+    }
+
+    function showSyncOverlay(text) {
+        const overlay = document.getElementById('syncOverlay');
+        document.getElementById('syncText').textContent = text;
+        overlay.classList.add('visible');
+        clearTimeout(overlay._hideTimeout);
+        overlay._hideTimeout = setTimeout(() => {
+            overlay.classList.remove('visible');
+        }, 2000);
+    }
+
+    function formatTime(seconds) {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        if (h > 0) return `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        return `${m}:${s.toString().padStart(2,'0')}`;
+    }
+
+    // ===== Party Chat =====
+    socket.on('watch_chat_message', (data) => {
+        addChatMessage(data.user, data.message, data.time);
+    });
+
+    function sendChat() {
+        const input = document.getElementById('chatInput');
+        const msg = input.value.trim();
+        if (!msg) return;
+
+        socket.emit('watch_chat', {
+            party_id: PARTY_ID,
+            message: msg
+        });
+        input.value = '';
+    }
+
+    document.getElementById('chatInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChat();
+        }
+    });
+
+    function addChatMessage(user, message, time) {
+        const container = document.getElementById('chatMessages');
+        const isSelf = user === userName;
+        const timeStr = time ? new Date(time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+
+        const div = document.createElement('div');
+        div.className = 'chat-msg ' + (isSelf ? 'self' : 'other');
+        div.innerHTML = `
+            <div class="chat-msg-user">${escapeHtml(user)}</div>
+            <div>${escapeHtml(message)}</div>
+            <div class="chat-msg-time">${timeStr}</div>
+        `;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // ===== End Party =====
+    function endParty() {
+        if (!confirm('End this watch party for everyone?')) return;
+        socket.emit('end_watch_party', { party_id: PARTY_ID });
+    }
+
+    socket.on('watch_party_ended', (data) => {
+        if (data.party_id === PARTY_ID) {
+            showToast('Watch party has ended', 'info');
+            setTimeout(() => {
+                window.location.href = '/watch';
+            }, 2000);
+        }
+    });
+
+    socket.on('watch_error', (data) => {
+        showToast(data.message || 'Something went wrong', 'error');
+    });
+
+    // ===== Leave on page exit =====
+    window.addEventListener('beforeunload', () => {
+        socket.emit('leave_watch_party', { party_id: PARTY_ID });
+    });
+
+    // ===== Chat Toggle =====
+    function toggleChat() {
+        document.getElementById('chatSidebar').classList.toggle('open');
+    }
+
+    // ===== Helpers =====
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + type;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+</script>
+
+</body>
+</html>

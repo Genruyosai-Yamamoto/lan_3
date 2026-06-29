@@ -42,8 +42,11 @@ cd LAN
 ```
 LAN/
 ├── README.md
-├── [Python server files]
-└── [HTML web interface files]
+├── app.py
+├── requirements.txt
+├── static/
+├── templates/
+└── uploads/
 ```
 
 ## Contributing

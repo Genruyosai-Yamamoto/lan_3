@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, send_from_directory, session, abort
+from flask import Flask, render_template, request, redirect, url_for, send_from_directory, session, abort, Response, jsonify
 import os
 import queue
 import threading
@@ -51,6 +51,8 @@ sid_to_username = {}     # sid -> username
 upload_registry = {}
 upload_queue = queue.Queue()
 
+watch_parties = {}  # party_id -> {id, host, title, video, viewers: [], created_at, status}
+
 
 # =========================
 # HELPERS
@@ -59,11 +61,15 @@ upload_queue = queue.Queue()
 # FIX 3: Only list real files, skip subdirectories like "audio"
 def get_upload_files():
     try:
-        items = os.listdir(UPLOAD_FOLDER)
-        return [
-            f for f in items
-            if os.path.isfile(os.path.join(UPLOAD_FOLDER, f))
-        ]
+        all_files = []
+        for root, dirs, files in os.walk(UPLOAD_FOLDER):
+            if root == UPLOAD_FOLDER and "audio" in dirs:
+                dirs.remove("audio")
+            for f in files:
+                if not f.startswith("."):
+                    rel_path = os.path.relpath(os.path.join(root, f), UPLOAD_FOLDER)
+                    all_files.append(rel_path)
+        return all_files
     except OSError:
         return []
 
@@ -86,10 +92,67 @@ worker_thread.start()
 
 @app.route("/")
 def index():
-    files = get_upload_files()
-    # FIX 4: Pass display_files explicitly so the template doesn't use
-    #         an undefined variable before the {% set %} line
-    return render_template("index.html", files=files, display_files=files)
+    current_path = request.args.get("path", "").strip()
+    # Normalize current_path to prevent directory traversal
+    if current_path:
+        parts = [secure_filename(p) for p in current_path.split("/") if p and p != ".."]
+        current_path = "/".join(parts)
+    
+    # Get items in UPLOAD_FOLDER + current_path
+    target_dir = os.path.join(UPLOAD_FOLDER, current_path) if current_path else UPLOAD_FOLDER
+    
+    # Ensure directory exists, fallback to root if not
+    if not os.path.exists(target_dir) or not os.path.isdir(target_dir):
+        return redirect(url_for("index"))
+        
+    items = os.listdir(target_dir)
+    
+    files = []
+    folders = []
+    
+    for item in items:
+        # Skip hidden files/folders and the special "audio" folder in the root
+        if item.startswith(".") or (not current_path and item == "audio"):
+            continue
+            
+        full_path = os.path.join(target_dir, item)
+        rel_item_path = f"{current_path}/{item}" if current_path else item
+        
+        if os.path.isdir(full_path):
+            folders.append({
+                "name": item,
+                "path": rel_item_path,
+                "type": "folder"
+            })
+        else:
+            files.append({
+                "name": item,
+                "path": rel_item_path,
+                "type": "file",
+                "size": os.path.getsize(full_path)
+            })
+            
+    folders.sort(key=lambda x: x["name"].lower())
+    files.sort(key=lambda x: x["name"].lower())
+    
+    breadcrumbs = [{"name": "Home", "path": ""}]
+    if current_path:
+        accumulated = []
+        for part in current_path.split("/"):
+            accumulated.append(part)
+            breadcrumbs.append({
+                "name": part,
+                "path": "/".join(accumulated)
+            })
+            
+    return render_template(
+        "index.html",
+        current_path=current_path,
+        folders=folders,
+        files=files,
+        breadcrumbs=breadcrumbs,
+        display_files=[f["name"] for f in files]
+    )
 
 
 @app.route("/api/file_count")
@@ -181,6 +244,7 @@ def upload_file():
 
     file = request.files["file"]
     uploader = request.form.get("uploader", "anonymous")
+    relative_path = request.form.get("relativePath", "")
 
     if file.filename == "":
         return {"error": "No filename"}, 400
@@ -188,11 +252,20 @@ def upload_file():
     upload_id = str(uuid.uuid4())[:8]
 
     # Security fix: prevent directory traversal/arbitrary file upload writing
-    filename = secure_filename(file.filename)
+    if relative_path:
+        parts = [secure_filename(p) for p in relative_path.split("/") if p and p != ".."]
+        if parts:
+            filename = "/".join(parts)
+        else:
+            filename = secure_filename(file.filename)
+    else:
+        filename = secure_filename(file.filename)
+
     if not filename:
         return {"error": "Invalid filename"}, 400
         
     filepath = os.path.join(UPLOAD_FOLDER, filename)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     file.save(filepath)
 
     upload_registry[upload_id] = {
@@ -220,12 +293,32 @@ def upload_file():
 # DOWNLOAD
 # =========================
 
-@app.route("/download/<filename>")
+@app.route("/download/<path:filename>")
 def download_file(filename):
     # Security fix: prevent path traversal attacks on file downloads
-    filename = secure_filename(filename)
+    parts = [secure_filename(p) for p in filename.split("/") if p and p != ".."]
+    if not parts:
+        return {"error": "Invalid filepath"}, 400
+        
+    safe_path = "/".join(parts)
+    full_path = os.path.join(UPLOAD_FOLDER, safe_path)
+    
+    if not os.path.exists(full_path):
+        return {"error": "File not found"}, 404
+        
     log_activity("DOWNLOAD", filename)
-    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
+    if os.path.isdir(full_path):
+        import tempfile
+        import shutil
+        temp_dir = tempfile.mkdtemp()
+        zip_name = parts[-1]
+        zip_path = os.path.join(temp_dir, zip_name)
+        shutil.make_archive(zip_path, 'zip', full_path)
+        return send_from_directory(temp_dir, f"{zip_name}.zip", as_attachment=True)
+    else:
+        dir_name = os.path.dirname(full_path)
+        base_name = os.path.basename(full_path)
+        return send_from_directory(dir_name, base_name, as_attachment=True)
 
 
 # =========================
@@ -260,7 +353,11 @@ def upload_audio():
         return {"error": "Unauthorized"}, 403
 
     audio = request.files["audio"]
-    filename = f"{uuid.uuid4()}.webm"
+    orig_filename = secure_filename(audio.filename)
+    ext = "webm"
+    if orig_filename and "." in orig_filename:
+        ext = orig_filename.rsplit(".", 1)[1].lower()
+    filename = f"{uuid.uuid4()}.{ext}"
     filepath = os.path.join("uploads/audio", filename)
     audio.save(filepath)
 
@@ -460,7 +557,11 @@ def upload_private_audio():
         return {"error": "Missing conversation_id"}, 400
 
     audio = request.files["audio"]
-    filename = f"{uuid.uuid4()}.webm"
+    orig_filename = secure_filename(audio.filename)
+    ext = "webm"
+    if orig_filename and "." in orig_filename:
+        ext = orig_filename.rsplit(".", 1)[1].lower()
+    filename = f"{uuid.uuid4()}.{ext}"
     filepath = os.path.join("uploads/audio", filename)
     audio.save(filepath)
 
@@ -722,6 +823,307 @@ def handle_remove_private_reaction(data):
 
 
 # =========================
+# WATCH PARTY
+# =========================
+
+VIDEO_EXTENSIONS = {'.mp4', '.webm', '.mkv', '.avi', '.mov', '.ogg'}
+
+
+@app.route("/watch")
+def watch_lobby():
+    return render_template("watch.html")
+
+
+@app.route("/watch/<party_id>")
+def watch_room(party_id):
+    if party_id not in watch_parties:
+        return redirect(url_for("watch_lobby"))
+    party = watch_parties[party_id]
+    return render_template("watch_room.html", party=party)
+
+
+@app.route("/api/videos")
+def api_videos():
+    """Return JSON list of video files found recursively in the uploads folder."""
+    videos = []
+    for root, dirs, files in os.walk(UPLOAD_FOLDER):
+        # Skip the audio subfolder
+        if root == UPLOAD_FOLDER and "audio" in dirs:
+            dirs.remove("audio")
+        for f in files:
+            if f.startswith("."):
+                continue
+            ext = os.path.splitext(f)[1].lower()
+            if ext in VIDEO_EXTENSIONS:
+                rel_path = os.path.relpath(os.path.join(root, f), UPLOAD_FOLDER)
+                videos.append({
+                    "name": f,
+                    "path": rel_path,
+                    "size": os.path.getsize(os.path.join(root, f))
+                })
+    videos.sort(key=lambda v: v["name"].lower())
+    return jsonify(videos)
+
+
+@app.route("/api/watch/stream/<path:filename>")
+def watch_stream(filename):
+    """Serve video files with HTTP Range request support for HTML5 video seeking."""
+    # Sanitize path to prevent directory traversal
+    parts = [secure_filename(p) for p in filename.split("/") if p and p != ".."]
+    if not parts:
+        return {"error": "Invalid filepath"}, 400
+
+    safe_path = os.path.join(UPLOAD_FOLDER, *parts)
+
+    if not os.path.isfile(safe_path):
+        return {"error": "File not found"}, 404
+
+    ext = os.path.splitext(safe_path)[1].lower()
+    if ext not in VIDEO_EXTENSIONS:
+        return {"error": "Not a video file"}, 400
+
+    file_size = os.path.getsize(safe_path)
+
+    # Content type mapping
+    content_types = {
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mkv': 'video/x-matroska',
+        '.avi': 'video/x-msvideo',
+        '.mov': 'video/quicktime',
+        '.ogg': 'video/ogg',
+    }
+    content_type = content_types.get(ext, 'application/octet-stream')
+
+    range_header = request.headers.get('Range')
+
+    if range_header:
+        # Parse Range header: "bytes=start-end"
+        byte_range = range_header.replace('bytes=', '').strip()
+        range_parts = byte_range.split('-')
+        start = int(range_parts[0]) if range_parts[0] else 0
+        end = int(range_parts[1]) if range_parts[1] else file_size - 1
+
+        if start >= file_size:
+            return Response(status=416, headers={
+                'Content-Range': f'bytes */{file_size}'
+            })
+
+        end = min(end, file_size - 1)
+        chunk_size = end - start + 1
+
+        def generate_range():
+            with open(safe_path, 'rb') as f:
+                f.seek(start)
+                remaining = chunk_size
+                while remaining > 0:
+                    read_size = min(remaining, 1024 * 1024)  # 1MB chunks
+                    data = f.read(read_size)
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+
+        return Response(
+            generate_range(),
+            status=206,
+            content_type=content_type,
+            headers={
+                'Content-Range': f'bytes {start}-{end}/{file_size}',
+                'Accept-Ranges': 'bytes',
+                'Content-Length': str(chunk_size),
+                'Cache-Control': 'no-cache',
+            },
+            direct_passthrough=True
+        )
+    else:
+        # No Range header — serve the entire file
+        def generate_full():
+            with open(safe_path, 'rb') as f:
+                while True:
+                    data = f.read(1024 * 1024)  # 1MB chunks
+                    if not data:
+                        break
+                    yield data
+
+        return Response(
+            generate_full(),
+            status=200,
+            content_type=content_type,
+            headers={
+                'Accept-Ranges': 'bytes',
+                'Content-Length': str(file_size),
+                'Cache-Control': 'no-cache',
+            },
+            direct_passthrough=True
+        )
+
+
+@socketio.on("create_watch_party")
+def handle_create_watch_party(data):
+    username = sid_to_username.get(request.sid) or session.get("username")
+    if not username:
+        emit("watch_error", {"message": "You must be logged in to create a watch party."})
+        return
+
+    video = data.get("video", "").strip()
+    title = data.get("title", "").strip() or f"{username}'s Watch Party"
+
+    # Validate video file exists
+    parts = [secure_filename(p) for p in video.split("/") if p and p != ".."]
+    if not parts:
+        emit("watch_error", {"message": "Invalid video path."})
+        return
+    video_path = os.path.join(UPLOAD_FOLDER, *parts)
+    if not os.path.isfile(video_path):
+        emit("watch_error", {"message": "Video file not found."})
+        return
+
+    party_id = str(uuid.uuid4())[:8]
+    watch_parties[party_id] = {
+        "id": party_id,
+        "host": username,
+        "title": title,
+        "video": "/".join(parts),
+        "viewers": [username],
+        "created_at": now_iso(),
+        "status": "active"
+    }
+
+    room_name = f"watch_{party_id}"
+    join_room(room_name)
+
+    emit("watch_party_created", watch_parties[party_id])
+    # Broadcast updated party list to everyone
+    socketio.emit("watch_parties_updated", list(watch_parties.values()))
+
+
+@socketio.on("join_watch_party")
+def handle_join_watch_party(data):
+    username = sid_to_username.get(request.sid) or session.get("username")
+    if not username:
+        emit("watch_error", {"message": "You must be logged in."})
+        return
+
+    party_id = data.get("party_id")
+    if party_id not in watch_parties:
+        emit("watch_error", {"message": "Watch party not found."})
+        return
+
+    party = watch_parties[party_id]
+    room_name = f"watch_{party_id}"
+    join_room(room_name)
+
+    if username not in party["viewers"]:
+        party["viewers"].append(username)
+
+    emit("watch_party_joined", party)
+    # Notify the room that a new viewer joined
+    socketio.emit("watch_viewer_update", {
+        "party_id": party_id,
+        "viewers": party["viewers"]
+    }, room=room_name)
+    # Broadcast updated party list
+    socketio.emit("watch_parties_updated", list(watch_parties.values()))
+
+
+@socketio.on("leave_watch_party")
+def handle_leave_watch_party(data):
+    username = sid_to_username.get(request.sid) or session.get("username")
+    if not username:
+        return
+
+    party_id = data.get("party_id")
+    if party_id not in watch_parties:
+        return
+
+    party = watch_parties[party_id]
+    room_name = f"watch_{party_id}"
+
+    if username in party["viewers"]:
+        party["viewers"].remove(username)
+
+    socketio.emit("watch_viewer_update", {
+        "party_id": party_id,
+        "viewers": party["viewers"]
+    }, room=room_name)
+    socketio.emit("watch_parties_updated", list(watch_parties.values()))
+
+
+@socketio.on("watch_sync")
+def handle_watch_sync(data):
+    """Host sends play/pause/seek events; server broadcasts to room (excludes sender)."""
+    username = sid_to_username.get(request.sid) or session.get("username")
+    if not username:
+        return
+
+    party_id = data.get("party_id")
+    if party_id not in watch_parties:
+        return
+
+    party = watch_parties[party_id]
+    # Only the host can send sync events
+    if party["host"] != username:
+        return
+
+    room_name = f"watch_{party_id}"
+    emit("watch_sync", {
+        "action": data.get("action"),  # 'play', 'pause', 'seek'
+        "time": data.get("time", 0),
+        "party_id": party_id
+    }, room=room_name, include_self=False)
+
+
+@socketio.on("watch_chat")
+def handle_watch_chat(data):
+    """Chat messages within the watch party room."""
+    username = sid_to_username.get(request.sid) or session.get("username")
+    if not username:
+        return
+
+    party_id = data.get("party_id")
+    if party_id not in watch_parties:
+        return
+
+    room_name = f"watch_{party_id}"
+    socketio.emit("watch_chat_message", {
+        "user": username,
+        "message": data.get("message", ""),
+        "time": now_iso(),
+        "party_id": party_id
+    }, room=room_name)
+
+
+@socketio.on("end_watch_party")
+def handle_end_watch_party(data):
+    """Host ends the watch party."""
+    username = sid_to_username.get(request.sid) or session.get("username")
+    if not username:
+        return
+
+    party_id = data.get("party_id")
+    if party_id not in watch_parties:
+        return
+
+    party = watch_parties[party_id]
+    if party["host"] != username:
+        emit("watch_error", {"message": "Only the host can end the party."})
+        return
+
+    room_name = f"watch_{party_id}"
+    socketio.emit("watch_party_ended", {"party_id": party_id}, room=room_name)
+
+    del watch_parties[party_id]
+    socketio.emit("watch_parties_updated", list(watch_parties.values()))
+
+
+@socketio.on("get_watch_parties")
+def handle_get_watch_parties():
+    """Client requests the current list of active watch parties."""
+    emit("watch_parties_updated", list(watch_parties.values()))
+
+
+# =========================
 # WEBRTC SIGNALLING FOR VOICE CALLS
 # =========================
 
@@ -773,6 +1175,64 @@ def handle_end_call(data):
     }, room=room, include_self=False)
 
 
+def _get_lan_ips():
+    """Return a list of this machine's non-loopback IPv4 addresses."""
+    import socket
+    ips = []
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            addr = info[4][0]
+            if not addr.startswith("127."):
+                ips.append(addr)
+    except Exception:
+        pass
+    # Fallback: connect to a non-routable address to discover the default LAN IP
+    if not ips:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("10.255.255.255", 1))
+            ips.append(s.getsockname()[0])
+            s.close()
+        except Exception:
+            pass
+    return list(set(ips))
+
+
+def ensure_self_signed_certs():
+    """Generate self-signed SSL certs with SAN entries for all LAN IPs."""
+    key_file = "key.pem"
+    cert_file = "cert.pem"
+    if not (os.path.exists(key_file) and os.path.exists(cert_file)):
+        print("Generating self-signed SSL certificates for HTTPS support...")
+        import subprocess, tempfile
+
+        # Build SAN list: localhost + all detected LAN IPs
+        san_entries = ["DNS:localhost"]
+        lan_ips = _get_lan_ips()
+        san_entries.append("IP:127.0.0.1")
+        for ip in lan_ips:
+            san_entries.append(f"IP:{ip}")
+
+        san_value = ",".join(san_entries)
+
+        try:
+            subprocess.run([
+                "openssl", "req", "-x509", "-newkey", "rsa:2048",
+                "-keyout", key_file, "-out", cert_file,
+                "-sha256", "-days", "365", "-nodes",
+                "-subj", "/CN=LAN-Server",
+                "-addext", f"subjectAltName={san_value}"
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"Successfully generated key.pem and cert.pem!")
+            print(f"  SANs: {san_value}")
+            return True
+        except Exception as e:
+            print(f"Failed to generate self-signed certificates: {e}")
+            print("Please ensure 'openssl' is installed and in your PATH, or generate them manually.")
+            return False
+    return True
+
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
@@ -791,10 +1251,32 @@ if __name__ == "__main__":
 
     socketio.start_background_task(cleanup_offline_users, online_users, socketio)
 
-    socketio.run(
-        app,
-        host="0.0.0.0",
-        port=5000,
-        debug=True,
-        use_reloader=False   
-    )
+    # Always run in HTTPS mode — generate certs if they don't exist
+    ensure_self_signed_certs()
+
+    if os.path.exists("key.pem") and os.path.exists("cert.pem"):
+        lan_ips = _get_lan_ips()
+        print("=" * 50)
+        print("  HTTPS server starting on port 5000")
+        print(f"  Local:   https://localhost:5000")
+        for ip in lan_ips:
+            print(f"  LAN:     https://{ip}:5000")
+        print("=" * 50)
+        socketio.run(
+            app,
+            host="0.0.0.0",
+            port=5000,
+            debug=True,
+            use_reloader=False,
+            ssl_context=("cert.pem", "key.pem")
+        )
+    else:
+        print("WARNING: SSL certificate generation failed. Falling back to HTTP.")
+        print("Note: WebRTC & Audio Recording require a secure context.")
+        socketio.run(
+            app,
+            host="0.0.0.0",
+            port=5000,
+            debug=True,
+            use_reloader=False
+        )

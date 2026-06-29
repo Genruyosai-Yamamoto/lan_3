@@ -909,6 +909,10 @@
                     <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
                     Direct Chat
                 </a>
+                <a href="{{ url_for('watch_lobby') }}" class="nav-item">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                    Watch Party
+                </a>
             </div>
 
             <div class="nav-section" id="onlineUsersSection">
@@ -1197,7 +1201,7 @@
             const rawContent = el.textContent.trim();
             if (rawContent.startsWith('enc:')) {
                 el.textContent = await decryptMessage(rawContent, sharedKey);
-            } else if (rawContent.toLowerCase().endsWith('.webm') || rawContent.toLowerCase().includes('recording')) {
+            } else if (rawContent.toLowerCase().includes('audio') || rawContent.toLowerCase().includes('recording')) {
                 el.textContent = '🎤 Voice Message';
             }
         }
@@ -1537,15 +1541,46 @@
         const indicator = document.getElementById('recIndicator');
 
         if (!isRecording) {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                let errorMsg = 'Your browser does not support audio recording.';
+                if (!window.isSecureContext) {
+                    errorMsg = 'Audio recording requires HTTPS or localhost (Secure Context).';
+                    alert(
+                        "❌ Secure Context Required for Voice Messages\n\n" +
+                        "To record voice messages, your browser requires a secure context (HTTPS or localhost).\n\n" +
+                        "Since you are accessing the server via HTTP, microphone permissions are blocked by the browser.\n\n" +
+                        "How to fix this:\n" +
+                        "1. Access the app via http://localhost:5000/ (if on the host machine)\n" +
+                        "2. Enable 'Insecure origins treated as secure' in your browser flags (e.g., chrome://flags/#unsafely-treat-insecure-origin-as-secure) and add your server URL\n" +
+                        "3. Run the Flask server in HTTPS mode (using certificates)"
+                    );
+                }
+                showToast(errorMsg, 'error');
+                return;
+            }
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
+                let options = {};
+                if (typeof MediaRecorder !== 'undefined') {
+                    if (MediaRecorder.isTypeSupported('audio/webm')) {
+                        options = { mimeType: 'audio/webm' };
+                    } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+                        options = { mimeType: 'audio/mp4' };
+                    } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+                        options = { mimeType: 'audio/ogg' };
+                    } else if (MediaRecorder.isTypeSupported('audio/wav')) {
+                        options = { mimeType: 'audio/wav' };
+                    }
+                }
+                mediaRecorder = new MediaRecorder(stream, options);
                 audioChunks = [];
                 mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
                 mediaRecorder.onstop = async () => {
-                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const mimeType = mediaRecorder.mimeType || 'audio/webm';
+                    const extension = mimeType.split(';')[0].split('/')[1] || 'webm';
+                    const blob = new Blob(audioChunks, { type: mimeType });
                     const formData = new FormData();
-                    formData.append('audio', blob, 'recording.webm');
+                    formData.append('audio', blob, `recording.${extension}`);
                     formData.append('sender', userName);
                     formData.append('receiver', partnerName);
                     formData.append('conversation_id', conversationId || '');
@@ -1769,7 +1804,7 @@
         let replyHtml = '';
         if (reply_to_id) {
             let displayReply = reply_to_content || '';
-            if (displayReply.toLowerCase().endsWith('.webm') || displayReply.toLowerCase().includes('recording')) {
+            if (displayReply.toLowerCase().includes('audio') || displayReply.toLowerCase().includes('recording')) {
                 displayReply = '🎤 Voice Message';
             }
             replyHtml = '<div class="reply-quote" onclick="scrollToMessage(' + reply_to_id + ')" style="background: rgba(0,0,0,0.15); border-left: 3px solid var(--primary, #3b82f6); padding: 0.35rem 0.6rem; font-size: 0.8rem; margin-bottom: 0.5rem; cursor: pointer; border-radius: 4px; opacity: 0.85; text-align: left;">' +
@@ -1853,6 +1888,9 @@
                     displayContent = '🎤 Voice Message';
                 }
             }
+        }
+        if (displayContent.toLowerCase().includes('audio') || displayContent.toLowerCase().includes('recording')) {
+            displayContent = '🎤 Voice Message';
         }
         if (replyTextEl) replyTextEl.textContent = displayContent;
         if (replyIndicatorEl) replyIndicatorEl.style.display = 'flex';
@@ -2030,6 +2068,23 @@
     endCallBtn.addEventListener('click', endVoiceCall);
 
     async function getLocalAudioStream() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            let errorMsg = 'Your browser does not support audio calling.';
+            if (!window.isSecureContext) {
+                errorMsg = 'Voice calls require HTTPS or localhost (Secure Context).';
+                alert(
+                    "❌ Secure Context Required for WebRTC Calls\n\n" +
+                    "To use voice calls, your browser requires a secure context (HTTPS or localhost).\n\n" +
+                    "Since you are accessing the server via HTTP, microphone permissions are blocked by the browser.\n\n" +
+                    "How to fix this:\n" +
+                    "1. Access the app via http://localhost:5000/ (if on the host machine)\n" +
+                    "2. Enable 'Insecure origins treated as secure' in your browser flags (e.g., chrome://flags/#unsafely-treat-insecure-origin-as-secure) and add your server URL\n" +
+                    "3. Run the Flask server in HTTPS mode (using certificates)"
+                );
+            }
+            showToast(errorMsg, 'error');
+            throw new Error('secure context / getUserMedia missing');
+        }
         try {
             return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         } catch (err) {

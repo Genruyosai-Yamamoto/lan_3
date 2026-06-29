@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Party — FileShare Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
+    <style>
+        :root {
+            --sidebar-width: 280px;
+            --sidebar-bg: #0b1121;
+            --sidebar-text: #94a3b8;
+            --sidebar-active: #1e293b;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-light: #e0e7ff;
+            --bg: #f1f5f9;
+            --surface: #ffffff;
+            --text: #0f172a;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --radius: 12px;
+            --accent: #8b5cf6;
+            --accent-light: #ede9fe;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        .app { display: flex; min-height: 100vh; }
+
+        /* ---- Sidebar (same as index.html) ---- */
+        .sidebar {
+            width: var(--sidebar-width); background: var(--sidebar-bg); color: var(--sidebar-text);
+            position: fixed; height: 100vh; left: 0; top: 0; z-index: 50;
+            display: flex; flex-direction: column;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-right: 1px solid #1e293b;
+        }
+        .sidebar-header {
+            padding: 1.5rem; border-bottom: 1px solid #1e293b;
+            display: flex; align-items: center; gap: 0.75rem;
+        }
+        .logo-icon {
+            width: 36px; height: 36px; background: var(--primary); border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: 700; font-size: 1.1rem; flex-shrink: 0;
+        }
+        .brand { font-weight: 700; color: #f8fafc; font-size: 1.125rem; letter-spacing: -0.025em; }
+        .brand span { color: var(--primary); }
+        .sidebar-nav { flex: 1; padding: 1rem 0.75rem; overflow-y: auto; }
+        .nav-section { margin-bottom: 1.5rem; }
+        .nav-label {
+            font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em;
+            font-weight: 600; padding: 0 0.75rem; margin-bottom: 0.5rem; opacity: 0.6;
+        }
+        .nav-item {
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.625rem 0.75rem; border-radius: 8px; cursor: pointer;
+            transition: all 0.2s; font-size: 0.875rem; font-weight: 500;
+            margin-bottom: 0.25rem; border: none; background: none;
+            color: inherit; width: 100%; text-align: left; text-decoration: none;
+        }
+        .nav-item:hover { background: var(--sidebar-active); color: #e2e8f0; }
+        .nav-item.active { background: var(--sidebar-active); color: var(--primary-light); box-shadow: inset 2px 0 0 var(--primary); }
+        .nav-icon { width: 20px; height: 20px; opacity: 0.7; flex-shrink: 0; }
+        .nav-item.active .nav-icon { opacity: 1; }
+
+        .online-widget { margin-top: auto; padding: 1rem 0.75rem; border-top: 1px solid #1e293b; }
+        .online-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 0.75rem; font-size: 0.6875rem; text-transform: uppercase;
+            letter-spacing: 0.05em; font-weight: 600; opacity: 0.6;
+        }
+        .online-count {
+            background: var(--primary); color: white;
+            padding: 0.125rem 0.5rem; border-radius: 9999px;
+            font-size: 0.75rem; font-weight: 700;
+        }
+        .user-list { display: flex; flex-direction: column; gap: 0.5rem; max-height: 160px; overflow-y: auto; }
+        .user-chip {
+            display: flex; align-items: center; gap: 0.5rem;
+            font-size: 0.8125rem; padding: 0.375rem 0.5rem;
+            border-radius: 6px; background: rgba(255,255,255,0.03);
+        }
+        .user-avatar {
+            width: 24px; height: 24px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), #818cf8);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.625rem; font-weight: 700; color: white; flex-shrink: 0;
+        }
+        .user-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #cbd5e1; }
+        .status-dot {
+            width: 6px; height: 6px; border-radius: 50%; background: var(--success);
+            margin-left: auto; flex-shrink: 0; box-shadow: 0 0 0 2px var(--sidebar-bg);
+        }
+
+        .sidebar-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5); z-index: 45; backdrop-filter: blur(4px);
+        }
+
+        /* ---- Main ---- */
+        .main { flex: 1; margin-left: var(--sidebar-width); min-height: 100vh; display: flex; flex-direction: column; }
+        .topbar {
+            background: var(--surface); border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 40;
+        }
+        .page-title h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+        .page-title p { font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.125rem; }
+        .topbar-actions { display: flex; align-items: center; gap: 1rem; }
+        .mobile-toggle { display: none; background: none; border: none; cursor: pointer; padding: 0.5rem; color: var(--text); }
+        .content { padding: 2rem; flex: 1; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.625rem 1.25rem; border-radius: 10px; font-size: 0.875rem;
+            font-weight: 600; border: none; cursor: pointer; transition: all 0.2s; text-decoration: none;
+        }
+        .btn-primary { background: var(--primary); color: white; box-shadow: 0 1px 2px 0 rgb(99 102 241 / 0.2); }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+        .btn-secondary { background: white; color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--bg); }
+        .btn-accent { background: var(--accent); color: white; box-shadow: 0 1px 2px 0 rgb(139 92 246 / 0.2); }
+        .btn-accent:hover { background: #7c3aed; transform: translateY(-1px); }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .card {
+            background: var(--surface); border-radius: var(--radius);
+            border: 1px solid var(--border); padding: 1.5rem;
+            box-shadow: var(--shadow); transition: all 0.3s;
+        }
+        .card:hover { box-shadow: var(--shadow-lg); }
+        .badge {
+            display: inline-flex; align-items: center; padding: 0.25rem 0.75rem;
+            border-radius: 9999px; font-size: 0.75rem; font-weight: 600;
+            background: #f1f5f9; color: var(--text-secondary);
+        }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-live { background: #fef2f2; color: #dc2626; animation: pulse-badge 2s infinite; }
+
+        @keyframes pulse-badge {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* ---- Hero / Create Section ---- */
+        .hero-card {
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4338ca 100%);
+            border-radius: var(--radius); padding: 2.5rem; margin-bottom: 2rem;
+            color: white; position: relative; overflow: hidden;
+        }
+        .hero-card::before {
+            content: ''; position: absolute; top: -60%; right: -20%;
+            width: 400px; height: 400px; border-radius: 50%;
+            background: radial-gradient(circle, rgba(139,92,246,0.3) 0%, transparent 70%);
+        }
+        .hero-card h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; position: relative; }
+        .hero-card p { color: #c4b5fd; font-size: 0.9375rem; margin-bottom: 1.5rem; max-width: 500px; position: relative; }
+
+        /* ---- Party Grid ---- */
+        .party-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1.5rem;
+        }
+        .party-card {
+            background: var(--surface); border-radius: var(--radius);
+            border: 1px solid var(--border); overflow: hidden;
+            box-shadow: var(--shadow); transition: all 0.3s; cursor: pointer;
+        }
+        .party-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+        .party-thumb {
+            height: 180px; background: linear-gradient(135deg, #1e1b4b, #312e81);
+            display: flex; align-items: center; justify-content: center; position: relative;
+        }
+        .party-thumb svg { width: 48px; height: 48px; color: rgba(255,255,255,0.5); }
+        .party-thumb .live-indicator {
+            position: absolute; top: 0.75rem; right: 0.75rem;
+            background: #dc2626; color: white; padding: 0.25rem 0.75rem;
+            border-radius: 6px; font-size: 0.6875rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.05em;
+            display: flex; align-items: center; gap: 0.375rem;
+        }
+        .party-thumb .live-indicator::before {
+            content: ''; width: 6px; height: 6px; border-radius: 50%;
+            background: white; animation: blink 1s infinite;
+        }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .party-info { padding: 1.25rem; }
+        .party-title { font-weight: 600; font-size: 1rem; margin-bottom: 0.375rem; }
+        .party-meta { font-size: 0.8125rem; color: var(--text-secondary); display: flex; align-items: center; gap: 1rem; }
+        .party-meta-item { display: flex; align-items: center; gap: 0.375rem; }
+        .party-actions { padding: 0 1.25rem 1.25rem; }
+
+        /* ---- Modal ---- */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            z-index: 100; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--surface); border-radius: 16px; width: 560px;
+            max-width: calc(100vw - 2rem); max-height: calc(100vh - 2rem);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); overflow: hidden;
+            animation: modal-in 0.3s ease;
+        }
+        @keyframes modal-in {
+            from { transform: scale(0.95) translateY(20px); opacity: 0; }
+            to { transform: scale(1) translateY(0); opacity: 1; }
+        }
+        .modal-header {
+            padding: 1.5rem; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .modal-header h3 { font-size: 1.125rem; font-weight: 700; }
+        .modal-close {
+            width: 32px; height: 32px; border-radius: 8px; border: none;
+            background: var(--bg); cursor: pointer; display: flex;
+            align-items: center; justify-content: center; color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+        .modal-close:hover { background: #fee2e2; color: var(--danger); }
+        .modal-body { padding: 1.5rem; overflow-y: auto; max-height: 60vh; }
+        .modal-footer { padding: 1.25rem 1.5rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 0.75rem; }
+
+        .form-group { margin-bottom: 1.25rem; }
+        .form-label { display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-secondary); }
+        .form-input {
+            width: 100%; padding: 0.75rem 1rem; border-radius: 10px;
+            border: 1px solid var(--border); font-size: 0.875rem;
+            font-family: inherit; transition: border-color 0.2s;
+            background: var(--surface);
+        }
+        .form-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+
+        .video-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .video-option {
+            display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem;
+            border-radius: 10px; border: 2px solid var(--border); cursor: pointer;
+            transition: all 0.2s; background: var(--surface);
+        }
+        .video-option:hover { border-color: var(--primary); background: var(--primary-light); }
+        .video-option.selected { border-color: var(--primary); background: var(--primary-light); }
+        .video-option input[type="radio"] { display: none; }
+        .video-icon {
+            width: 40px; height: 40px; border-radius: 8px;
+            background: var(--accent-light); color: var(--accent);
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .video-name { font-weight: 500; font-size: 0.875rem; }
+        .video-path { font-size: 0.75rem; color: var(--text-secondary); }
+
+        .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text-secondary); }
+        .empty-state svg { width: 64px; height: 64px; margin: 0 auto 1rem; opacity: 0.3; }
+
+        .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+        .section-header h2 { font-size: 1.25rem; font-weight: 700; }
+
+        /* Toast */
+        .toast-container { position: fixed; top: 1.5rem; right: 1.5rem; z-index: 110; display: flex; flex-direction: column; gap: 0.75rem; }
+        .toast {
+            background: var(--surface); border: 1px solid var(--border);
+            border-left: 4px solid var(--primary); border-radius: 10px;
+            padding: 1rem 1.25rem; box-shadow: var(--shadow-lg);
+            display: flex; align-items: center; gap: 0.75rem;
+            min-width: 300px; max-width: 400px;
+            animation: slideIn 0.3s ease; font-size: 0.875rem; font-weight: 500;
+        }
+        .toast.success { border-left-color: var(--success); }
+        .toast.error { border-left-color: var(--danger); }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main { margin-left: 0; }
+            .mobile-toggle { display: block; }
+            .sidebar-overlay.active { display: block; }
+            .content { padding: 1rem; }
+            .topbar { padding: 1rem; }
+            .party-grid { grid-template-columns: 1fr; }
+            .hero-card { padding: 1.5rem; }
+        }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo-icon">FS</div>
+            <div class="brand">File<span>Share</span></div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-label">Menu</div>
+                <a href="{{ url_for('index') }}" class="nav-item">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                    Dashboard
+                </a>
+                <a href="{{ url_for('chat_page') }}" class="nav-item">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Chat
+                </a>
+                <a href="{{ url_for('dm') }}" class="nav-item">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                    Direct Chat
+                </a>
+                <a href="{{ url_for('watch_lobby') }}" class="nav-item active">
+                    <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                    Watch Party
+                </a>
+            </div>
+        </nav>
+
+        <div class="online-widget">
+            <div class="online-header">
+                <span>Online Now</span>
+                <span class="online-count" id="onlineCount">0</span>
+            </div>
+            <div class="user-list" id="userList">
+                <div style="font-size:0.8125rem;opacity:0.5;padding:0.5rem;">Connecting...</div>
+            </div>
+        </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+    <!-- Main Content -->
+    <main class="main">
+        <header class="topbar">
+            <div style="display:flex;align-items:center;gap:1rem;">
+                <button class="mobile-toggle" onclick="toggleSidebar()">
+                    <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <div class="page-title">
+                    <h1>Watch Party</h1>
+                    <p>Watch videos together with everyone on the network</p>
+                </div>
+            </div>
+            <div class="topbar-actions">
+                <div id="connectionStatus" class="badge" style="display:flex;align-items:center;gap:0.5rem;">
+                    <span class="status-dot" style="position:static;background:var(--text-secondary);"></span>
+                    Offline
+                </div>
+            </div>
+        </header>
+
+        <div class="content">
+            <!-- Hero / Create -->
+            <div class="hero-card">
+                <h2>🎬 Start a Watch Party</h2>
+                <p>Pick a video file from uploads and watch it together in perfect sync. The host controls playback — everyone follows along live.</p>
+                <button class="btn btn-accent" onclick="openCreateModal()" id="createPartyBtn">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    Create Watch Party
+                </button>
+            </div>
+
+            <!-- Active Parties -->
+            <div class="section-header">
+                <h2>Active Parties</h2>
+                <span class="badge" id="partyCountBadge">0 active</span>
+            </div>
+
+            <div id="partiesContainer">
+                <div class="empty-state" id="noParties">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                    <h3 style="font-weight:600;margin-bottom:0.5rem;color:var(--text);">No active watch parties</h3>
+                    <p>Create one to start watching videos with others on the network</p>
+                </div>
+                <div class="party-grid" id="partyGrid" style="display:none;"></div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Create Party Modal -->
+<div class="modal-overlay" id="createModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Create Watch Party</h3>
+            <button class="modal-close" onclick="closeCreateModal()">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Party Name</label>
+                <input type="text" class="form-input" id="partyName" placeholder="e.g. Movie Night 🍿" maxlength="60">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Select a Video</label>
+                <div id="videoListContainer">
+                    <div style="padding:2rem;text-align:center;color:var(--text-secondary);font-size:0.875rem;">
+                        Loading videos...
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+            <button class="btn btn-accent" onclick="createParty()" id="createBtn" disabled>
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Start Party
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+    let userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
+    sessionStorage.setItem('fs_username', userName);
+    document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
+
+    // Set username in session
+    fetch('/set_username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: userName })
+    });
+
+    // Socket.IO
+    const socket = io({
+        transports: ['polling', 'websocket'],
+        upgrade: true,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+    });
+
+    socket.on('connect', () => {
+        updateConnectionStatus(true);
+        socket.emit('user_online', { name: userName });
+        socket.emit('get_watch_parties');
+    });
+
+    socket.on('username_taken', (data) => {
+        const newName = prompt('"' + data.username + '" is already in use.\nChoose a different name:', 'Anonymous');
+        if (newName && newName.trim()) {
+            userName = newName.trim();
+            sessionStorage.setItem('fs_username', userName);
+            document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
+            socket.emit('user_online', { name: userName });
+        }
+    });
+
+    setInterval(() => {
+        if (socket.connected) socket.emit('heartbeat', { name: userName });
+    }, 5000);
+
+    socket.on('disconnect', () => updateConnectionStatus(false));
+    socket.on('online_users', (users) => renderOnlineUsers(users));
+
+    // Watch Party Events
+    let selectedVideo = null;
+
+    socket.on('watch_parties_updated', (parties) => {
+        renderParties(parties);
+    });
+
+    socket.on('watch_party_created', (party) => {
+        // Redirect host to the party room
+        window.location.href = '/watch/' + party.id;
+    });
+
+    socket.on('watch_party_updated_legacy', () => {
+        // No longer needed; watch_parties_updated sends full list
+    });
+
+    socket.on('watch_error', (data) => {
+        showToast(data.message || 'Something went wrong', 'error');
+    });
+
+    function renderParties(parties) {
+        const grid = document.getElementById('partyGrid');
+        const empty = document.getElementById('noParties');
+        const badge = document.getElementById('partyCountBadge');
+
+        const activeParties = parties.filter(p => p.status === 'active');
+        badge.textContent = activeParties.length + ' active';
+
+        if (activeParties.length === 0) {
+            empty.style.display = '';
+            grid.style.display = 'none';
+            return;
+        }
+
+        empty.style.display = 'none';
+        grid.style.display = '';
+
+        grid.innerHTML = activeParties.map(party => `
+            <div class="party-card" onclick="window.location.href='/watch/${escapeHtml(party.id)}'">
+                <div class="party-thumb">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <div class="live-indicator">LIVE</div>
+                </div>
+                <div class="party-info">
+                    <div class="party-title">${escapeHtml(party.title)}</div>
+                    <div class="party-meta">
+                        <span class="party-meta-item">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                            ${escapeHtml(party.host)}
+                        </span>
+                        <span class="party-meta-item">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                            ${(party.viewers || []).length} watching
+                        </span>
+                    </div>
+                </div>
+                <div class="party-actions">
+                    <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="event.stopPropagation(); window.location.href='/watch/${escapeHtml(party.id)}'">
+                        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                        Join Party
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function openCreateModal() {
+        document.getElementById('createModal').classList.add('active');
+        document.getElementById('partyName').value = '';
+        selectedVideo = null;
+        document.getElementById('createBtn').disabled = true;
+        loadVideoList();
+    }
+
+    function closeCreateModal() {
+        document.getElementById('createModal').classList.remove('active');
+    }
+
+    async function loadVideoList() {
+        const container = document.getElementById('videoListContainer');
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-secondary);font-size:0.875rem;">Loading videos...</div>';
+
+        try {
+            const res = await fetch('/api/videos');
+            const videos = await res.json();
+
+            if (!videos || videos.length === 0) {
+                container.innerHTML = `
+                    <div style="padding:2rem;text-align:center;color:var(--text-secondary);font-size:0.875rem;">
+                        <p>No video files found in uploads.</p>
+                        <p style="margin-top:0.5rem;font-size:0.75rem;">Upload .mp4, .webm, .mkv, .avi, .mov, or .ogg files first.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = '<div class="video-list">' + videos.map((v, i) => {
+                const sizeStr = v.size < 1048576 ? (v.size / 1024).toFixed(1) + ' KB' : (v.size / 1048576).toFixed(1) + ' MB';
+                return `
+                <label class="video-option" id="vopt-${i}">
+                    <input type="radio" name="video" value="${escapeAttr(v.path)}" onchange="selectVideo(this.value, ${i})">
+                    <div class="video-icon">
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                    </div>
+                    <div>
+                        <div class="video-name">${escapeHtml(v.name)}</div>
+                        <div class="video-path">${escapeHtml(v.path)} — ${sizeStr}</div>
+                    </div>
+                </label>
+            `}).join('') + '</div>';
+        } catch (err) {
+            container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--danger);font-size:0.875rem;">Failed to load videos</div>';
+        }
+    }
+
+    function selectVideo(video, idx) {
+        selectedVideo = video;
+        document.querySelectorAll('.video-option').forEach(el => el.classList.remove('selected'));
+        document.getElementById('vopt-' + idx).classList.add('selected');
+        document.getElementById('createBtn').disabled = false;
+    }
+
+    function createParty() {
+        if (!selectedVideo) return;
+        const title = document.getElementById('partyName').value.trim() || (userName + "'s Watch Party");
+        socket.emit('create_watch_party', {
+            host: userName,
+            title: title,
+            video: selectedVideo
+        });
+        closeCreateModal();
+        showToast('Creating watch party...', 'success');
+    }
+
+    // ---- UI Helpers ----
+    function updateConnectionStatus(connected) {
+        const el = document.getElementById('connectionStatus');
+        if (connected) {
+            el.innerHTML = '<span class="status-dot" style="position:static;background:var(--success);"></span> Live';
+            el.className = 'badge badge-success';
+        } else {
+            el.innerHTML = '<span class="status-dot" style="position:static;background:var(--danger);"></span> Offline';
+            el.className = 'badge';
+            el.style.background = '#fee2e2'; el.style.color = '#991b1b';
+        }
+    }
+
+    function renderOnlineUsers(users) {
+        const container = document.getElementById('userList');
+        const list = Array.isArray(users) ? users : [];
+        document.getElementById('onlineCount').textContent = list.length;
+        if (list.length === 0) {
+            container.innerHTML = '<div style="font-size:0.8125rem;opacity:0.5;padding:0.5rem;">No users online</div>';
+            return;
+        }
+        container.innerHTML = list.map(data => `
+            <div class="user-chip" title="IP: ${escapeHtml(data.ip || 'unknown')}">
+                <div class="user-avatar">${(data.name || 'A').charAt(0).toUpperCase()}</div>
+                <span class="user-name">${escapeHtml(data.name || 'Anonymous')}</span>
+                <span class="status-dot"></span>
+            </div>
+        `).join('');
+    }
+
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+        document.getElementById('overlay').classList.toggle('active');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function escapeAttr(text) {
+        return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + type;
+        toast.innerHTML = `
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                ${type === 'success'
+                    ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>'
+                    : '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>'}
+            </svg>
+            ${escapeHtml(message)}
+        `;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0'; toast.style.transform = 'translateX(100%)';
+            toast.style.transition = 'all 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    }
+
+    // Close modal on Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeCreateModal();
+    });
+
+    // Close modal on overlay click
+    document.getElementById('createModal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeCreateModal();
+    });
+</script>
+
+</body>
+</html>
