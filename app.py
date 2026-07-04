@@ -310,11 +310,20 @@ def download_file(filename):
     if os.path.isdir(full_path):
         import tempfile
         import shutil
-        temp_dir = tempfile.mkdtemp()
+        temp_dir = tempfile.mkdtemp(dir=".")
         zip_name = parts[-1]
         zip_path = os.path.join(temp_dir, zip_name)
         shutil.make_archive(zip_path, 'zip', full_path)
-        return send_from_directory(temp_dir, f"{zip_name}.zip", as_attachment=True)
+        response = send_from_directory(temp_dir, f"{zip_name}.zip", as_attachment=True)
+        
+        @response.call_on_close
+        def cleanup():
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                app.logger.error(f"Error cleaning up temp dir {temp_dir}: {e}")
+                
+        return response
     else:
         dir_name = os.path.dirname(full_path)
         base_name = os.path.basename(full_path)
@@ -1202,26 +1211,56 @@ def ensure_self_signed_certs():
     """Generate self-signed SSL certs with SAN entries for all LAN IPs."""
     key_file = "key.pem"
     cert_file = "cert.pem"
-    if not (os.path.exists(key_file) and os.path.exists(cert_file)):
-        print("Generating self-signed SSL certificates for HTTPS support...")
-        import subprocess, tempfile
+    
+    lan_ips = _get_lan_ips()
+    
+    # Check if cert exists and contains all current LAN IPs in the SAN list, and serverAuth EKU
+    need_generation = True
+    if os.path.exists(key_file) and os.path.exists(cert_file):
+        try:
+            import subprocess
+            res = subprocess.run(
+                ["openssl", "x509", "-in", cert_file, "-text", "-noout"],
+                capture_output=True, text=True, check=True
+            )
+            cert_text = res.stdout
+            has_eku = "TLS Web Server Authentication" in cert_text or "extendedKeyUsage=serverAuth" in cert_text
+            has_all_ips = True
+            for ip in lan_ips:
+                if f"IP:{ip}" not in cert_text and f"IP Address:{ip}" not in cert_text:
+                    has_all_ips = False
+                    break
+            if "DNS:localhost" not in cert_text or "127.0.0.1" not in cert_text:
+                has_all_ips = False
+                
+            if has_eku and has_all_ips:
+                need_generation = False
+        except Exception:
+            pass
 
+    if need_generation:
+        print("Generating self-signed SSL certificates for HTTPS support...")
+        import subprocess
         # Build SAN list: localhost + all detected LAN IPs
-        san_entries = ["DNS:localhost"]
-        lan_ips = _get_lan_ips()
-        san_entries.append("IP:127.0.0.1")
+        san_entries = ["DNS:localhost", "IP:127.0.0.1"]
         for ip in lan_ips:
             san_entries.append(f"IP:{ip}")
-
         san_value = ",".join(san_entries)
-
+        
         try:
+            # Delete old ones first
+            if os.path.exists(key_file):
+                os.remove(key_file)
+            if os.path.exists(cert_file):
+                os.remove(cert_file)
+                
             subprocess.run([
                 "openssl", "req", "-x509", "-newkey", "rsa:2048",
                 "-keyout", key_file, "-out", cert_file,
                 "-sha256", "-days", "365", "-nodes",
                 "-subj", "/CN=LAN-Server",
-                "-addext", f"subjectAltName={san_value}"
+                "-addext", f"subjectAltName={san_value}",
+                "-addext", "extendedKeyUsage=serverAuth"
             ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             print(f"Successfully generated key.pem and cert.pem!")
             print(f"  SANs: {san_value}")
@@ -1231,6 +1270,7 @@ def ensure_self_signed_certs():
             print("Please ensure 'openssl' is installed and in your PATH, or generate them manually.")
             return False
     return True
+
 
 
 if __name__ == "__main__":
