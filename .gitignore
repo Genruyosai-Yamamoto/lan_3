@@ -10,3 +10,4 @@ venv
 /instance
 /instance/*
 /uploads/*
+.worktrees
