@@ -71,8 +71,9 @@ A `LanUdpServer` class.
 
 **Payload** (JSON):
 ```json
-{"name": "LAN-Server", "version": "...", "tcp_port": 5000, "udp_port": 5000, "uptime_sec": 123, "tcp_status": "up"}
+{"name": "LAN-Server", "version": "1.0.0", "tcp_port": 5000, "udp_port": 5000, "uptime_sec": 123, "tcp_status": "up"}
 ```
+`version` is a module-level constant in `udp_server.py` (starts at `"1.0.0"`). `uptime_sec` is seconds since the UDP thread started.
 
 **TCP health:** Each response computes `tcp_status` by probing `127.0.0.1:5000` with the original socket and a 1s timeout (`"up"` / `"down"`). When the web server is down, UDP still responds but reports `tcp_status: "down"` — the network can tell the box is alive while the TCP app is not.
 
@@ -84,10 +85,13 @@ Zero-dependency Python (stdlib `socket` only), runnable from any device on the L
 
 - `python lan_status.py` → broadcast `LAN_DISCOVER` to `255.255.255.255:5000`, listen ~3s, print discovered servers (name, IP, TCP port, `tcp_status`).
 - `python lan_status.py <ip>` → **fail-over flow**:
-  1. Try TCP first: `GET /api/health` over HTTPS to `<ip>:5000` with a short timeout.
-  2. On **SSL error** (cert/handshake failure) or **weak TCP** (timeout/retries exhausted) → **flip to UDP**: send `LAN_PING` to `<ip>:5000` and print the UDP health response.
+  1. Try TCP first: `GET /api/health` over HTTPS to `<ip>:5000` with a 2s timeout, up to 3 attempts.
+  2. On **SSL error** (cert/handshake failure) or **weak TCP** (all attempts timed out) → **flip to UDP**: send `LAN_PING` to `<ip>:5000` and print the UDP health response.
   3. Use the returned `tcp_status` to know when TCP has recovered and flip back to TCP.
-- Distinct exit codes/messages for: TCP healthy, flipped to UDP (reason: `ssl_error` / `timeout`), UDP unreachable.
+- The client listens for UDP responses for 3s (discovery mode) and 2s (ping mode).
+- Distinct exit codes/messages for: TCP healthy (0), flipped to UDP (reason: `ssl_error` / `timeout`), UDP unreachable (2).
+
+**New minimal endpoint:** `GET /api/health` in `app.py` returns `{"status": "up", "tcp_port": 5000, "uptime_sec": ...}` so the CLI's TCP probe has a real endpoint to hit.
 
 **Browser limitation (documented):** Browsers cannot send raw UDP. The web UI (chat, DM, watch party, streaming) cannot physically flip to UDP; it keeps its existing Socket.IO polling/websocket reconnect behavior. The UDP fail-over applies to non-browser clients, i.e. `lan_status.py` (and any future native client).
 
@@ -99,7 +103,7 @@ Zero-dependency Python (stdlib `socket` only), runnable from any device on the L
 | `static/fonts/Inter-*.woff2` | **New** — font binaries fetched once during implementation |
 | `udp_server.py` | **New** — `LanUdpServer` (native-thread UDP listener, discovery + health + beacon) |
 | `lan_status.py` | **New** — fail-over CLI client (TCP → UDP on SSL error / weak TCP) |
-| `app.py` | Merge gevent changes, `debug=False`, `SEND_FILE_MAX_AGE_DEFAULT=86400`, start UDP thread |
+| `app.py` | Merge gevent changes, `debug=False`, `SEND_FILE_MAX_AGE_DEFAULT=86400`, start UDP thread, add `GET /api/health` |
 | `templates/index.html` | Replace Google Fonts links with `fonts.css` |
 | `templates/chat.html` | Replace Google Fonts links with `fonts.css` |
 | `templates/dm.html` | Replace Google Fonts links with `fonts.css` |
