@@ -1,3 +1,6 @@
+from gevent import monkey
+monkey.patch_all()
+
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, session, abort, Response, jsonify
 import os
 import queue
@@ -16,13 +19,12 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.secret_key = "ernflikwenfjbelirgjernglijiirjlie"
 
-# FIX 1: Explicit CORS + longer ping timeouts prevent LAN disconnects
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     ping_timeout=60,
     ping_interval=25,
-    async_mode="threading"
+    async_mode="gevent"
 )
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///chat.db"
@@ -44,21 +46,18 @@ app.config["AUDIO_FOLDER"] = AUDIO_FOLDER
 # STORAGE
 # =========================
 
-online_users = {}        # username -> {name, sid, ip, status, last_seen}
-# FIX 2: Reverse lookup dict for O(1) disconnect instead of scanning all users
-sid_to_username = {}     # sid -> username
+online_users = {}        
+sid_to_username = {}     
 
 upload_registry = {}
 upload_queue = queue.Queue()
 
-watch_parties = {}  # party_id -> {id, host, title, video, viewers: [], created_at, status}
-
+watch_parties = {} 
 
 # =========================
 # HELPERS
 # =========================
 
-# FIX 3: Only list real files, skip subdirectories like "audio"
 def get_upload_files():
     try:
         all_files = []
@@ -93,15 +92,12 @@ worker_thread.start()
 @app.route("/")
 def index():
     current_path = request.args.get("path", "").strip()
-    # Normalize current_path to prevent directory traversal
     if current_path:
         parts = [secure_filename(p) for p in current_path.split("/") if p and p != ".."]
         current_path = "/".join(parts)
     
-    # Get items in UPLOAD_FOLDER + current_path
     target_dir = os.path.join(UPLOAD_FOLDER, current_path) if current_path else UPLOAD_FOLDER
     
-    # Ensure directory exists, fallback to root if not
     if not os.path.exists(target_dir) or not os.path.isdir(target_dir):
         return redirect(url_for("index"))
         
@@ -111,7 +107,6 @@ def index():
     folders = []
     
     for item in items:
-        # Skip hidden files/folders and the special "audio" folder in the root
         if item.startswith(".") or (not current_path and item == "audio"):
             continue
             
@@ -173,12 +168,10 @@ def handle_connect(auth=None):
 def handle_disconnect():
     sid = request.sid
 
-    # FIX 5: O(1) lookup via sid_to_username instead of iterating all users
     username = sid_to_username.pop(sid, None)
 
     if username and username in online_users:
-        # Only remove if the SID still matches — prevents deleting a
-        # user who already reconnected with a new SID
+        
         if online_users[username].get("sid") == sid:
             del online_users[username]
 
@@ -195,12 +188,10 @@ def handle_user_online(data):
     if not username:
         return
 
-    # FIX 6: Reject duplicate usernames from another session
     if username in online_users and online_users[username].get("sid") != request.sid:
         emit("username_taken", {"username": username})
         return
 
-    # FIX 7: Clean stale SID mapping from previous session of this user
     old_sid = online_users.get(username, {}).get("sid")
     if old_sid and old_sid != request.sid and old_sid in sid_to_username:
         del sid_to_username[old_sid]
@@ -228,7 +219,6 @@ def handle_heartbeat(data):
         online_users[username]["last_seen"] = now_iso()
         online_users[username]["sid"] = request.sid
         online_users[username]["status"] = "online"
-        # FIX 8: Keep sid_to_username in sync on every heartbeat
         sid_to_username[request.sid] = username
 
 
@@ -238,7 +228,6 @@ def handle_heartbeat(data):
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    # FIX 9: Return JSON errors instead of redirect (fetch can't handle redirects)
     if "file" not in request.files:
         return {"error": "No file provided"}, 400
 
@@ -251,7 +240,6 @@ def upload_file():
 
     upload_id = str(uuid.uuid4())[:8]
 
-    # Security fix: prevent directory traversal/arbitrary file upload writing
     if relative_path:
         parts = [secure_filename(p) for p in relative_path.split("/") if p and p != ".."]
         if parts:
@@ -295,7 +283,6 @@ def upload_file():
 
 @app.route("/download/<path:filename>")
 def download_file(filename):
-    # Security fix: prevent path traversal attacks on file downloads
     parts = [secure_filename(p) for p in filename.split("/") if p and p != ".."]
     if not parts:
         return {"error": "Invalid filepath"}, 400
@@ -356,7 +343,6 @@ def chat_page():
 
 @app.route("/upload_audio", methods=["POST"])
 def upload_audio():
-    # Security check: authorize user via session
     username = session.get("username")
     if not username or request.form.get("user") != username:
         return {"error": "Unauthorized"}, 403
@@ -525,7 +511,6 @@ def save_public_key():
     if not username or not public_key:
         return {"error": "Missing username or public_key"}, 400
 
-    # Security fix: prevent public key hijacking/spoofing of other users
     session_username = session.get("username")
     if not session_username or session_username != username:
         return {"error": "Unauthorized to save key for another user"}, 403
@@ -542,7 +527,6 @@ def save_public_key():
 
 @app.route("/api/get_public_key/<username>")
 def get_public_key(username):
-    # Security fix: restrict keys fetch to authenticated clients
     if not session.get("username"):
         return {"error": "Authentication required"}, 401
     user_key = UserKey.query.filter_by(username=username).first()
@@ -557,7 +541,6 @@ def upload_private_audio():
     receiver = request.form.get("receiver")
     conversation_id = request.form.get("conversation_id")
 
-    # Security check: authorize the sender
     session_username = session.get("username")
     if not session_username or sender != session_username:
         return {"error": "Unauthorized"}, 403
@@ -598,7 +581,6 @@ def upload_private_audio():
 
 @app.route("/dm")
 def dm():
-    # Security fix: only use cryptographically signed session, no insecure cookies
     username = session.get("username")
     if not username:
         return redirect(url_for("index"))
@@ -612,7 +594,6 @@ def dm():
 
 @app.route("/dm/<int:conversation_id>")
 def dm_chat(conversation_id):
-    # Security fix: only use signed session
     username = session.get("username")
     if not username:
         return redirect(url_for("index"))
@@ -642,7 +623,6 @@ def dm_chat(conversation_id):
 
 @app.route("/dm/start_dm/<target_user>")
 def start_dm(target_user):
-    # Security fix: only use signed session
     username = session.get("username")
     if not username:
         return redirect(url_for("index"))
@@ -673,7 +653,6 @@ def typing(data):
 def join_dm(data):
     username = sid_to_username.get(request.sid) or session.get("username")
     print(f"DEBUG JOIN_DM: session/sid username={username}, data={data}", flush=True)
-    # Security fix: prevent users from joining other users' private DM rooms
     if not username or username not in [data.get("user1"), data.get("user2")]:
         print(f"DEBUG JOIN_DM: check failed! username={username}, user1={data.get('user1')}, user2={data.get('user2')}", flush=True)
         return
@@ -686,7 +665,6 @@ def join_dm(data):
 def send_private_message(data):
     username = sid_to_username.get(request.sid) or session.get("username")
     print(f"DEBUG SEND_PRIVATE_MESSAGE: session/sid username={username}, data={data}", flush=True)
-    # Security fix: prevent message sender spoofing
     if not username or data.get("sender") != username:
         print(f"DEBUG SEND_PRIVATE_MESSAGE: spoofing check failed! username={username}, sender={data.get('sender')}", flush=True)
         return
@@ -734,7 +712,6 @@ def handle_edit_private_message(data):
     if not msg:
         return
 
-    # Security fix: authenticate sender from session
     username = sid_to_username.get(request.sid) or session.get("username")
     if not username or msg.sender != username:
         emit("error", {"message": "You can only edit your own messages."})
@@ -757,7 +734,6 @@ def handle_delete_private_message(data):
     if not msg:
         return
 
-    # Security fix: authenticate sender from session
     username = sid_to_username.get(request.sid) or session.get("username")
     if not username or msg.sender != username:
         emit("error", {"message": "You can only delete your own messages."})
@@ -856,7 +832,6 @@ def api_videos():
     """Return JSON list of video files found recursively in the uploads folder."""
     videos = []
     for root, dirs, files in os.walk(UPLOAD_FOLDER):
-        # Skip the audio subfolder
         if root == UPLOAD_FOLDER and "audio" in dirs:
             dirs.remove("audio")
         for f in files:
@@ -877,7 +852,6 @@ def api_videos():
 @app.route("/api/watch/stream/<path:filename>")
 def watch_stream(filename):
     """Serve video files with HTTP Range request support for HTML5 video seeking."""
-    # Sanitize path to prevent directory traversal
     parts = [secure_filename(p) for p in filename.split("/") if p and p != ".."]
     if not parts:
         return {"error": "Invalid filepath"}, 400
@@ -893,7 +867,6 @@ def watch_stream(filename):
 
     file_size = os.path.getsize(safe_path)
 
-    # Content type mapping
     content_types = {
         '.mp4': 'video/mp4',
         '.webm': 'video/webm',
@@ -907,7 +880,6 @@ def watch_stream(filename):
     range_header = request.headers.get('Range')
 
     if range_header:
-        # Parse Range header: "bytes=start-end"
         byte_range = range_header.replace('bytes=', '').strip()
         range_parts = byte_range.split('-')
         start = int(range_parts[0]) if range_parts[0] else 0
@@ -926,7 +898,7 @@ def watch_stream(filename):
                 f.seek(start)
                 remaining = chunk_size
                 while remaining > 0:
-                    read_size = min(remaining, 1024 * 1024)  # 1MB chunks
+                    read_size = min(remaining, 1024 * 1024)  
                     data = f.read(read_size)
                     if not data:
                         break
@@ -946,11 +918,10 @@ def watch_stream(filename):
             direct_passthrough=True
         )
     else:
-        # No Range header — serve the entire file
         def generate_full():
             with open(safe_path, 'rb') as f:
                 while True:
-                    data = f.read(1024 * 1024)  # 1MB chunks
+                    data = f.read(1024 * 1024) 
                     if not data:
                         break
                     yield data
@@ -978,7 +949,6 @@ def handle_create_watch_party(data):
     video = data.get("video", "").strip()
     title = data.get("title", "").strip() or f"{username}'s Watch Party"
 
-    # Validate video file exists
     parts = [secure_filename(p) for p in video.split("/") if p and p != ".."]
     if not parts:
         emit("watch_error", {"message": "Invalid video path."})
@@ -1003,7 +973,6 @@ def handle_create_watch_party(data):
     join_room(room_name)
 
     emit("watch_party_created", watch_parties[party_id])
-    # Broadcast updated party list to everyone
     socketio.emit("watch_parties_updated", list(watch_parties.values()))
 
 
@@ -1027,12 +996,10 @@ def handle_join_watch_party(data):
         party["viewers"].append(username)
 
     emit("watch_party_joined", party)
-    # Notify the room that a new viewer joined
     socketio.emit("watch_viewer_update", {
         "party_id": party_id,
         "viewers": party["viewers"]
     }, room=room_name)
-    # Broadcast updated party list
     socketio.emit("watch_parties_updated", list(watch_parties.values()))
 
 
@@ -1071,13 +1038,12 @@ def handle_watch_sync(data):
         return
 
     party = watch_parties[party_id]
-    # Only the host can send sync events
     if party["host"] != username:
         return
 
     room_name = f"watch_{party_id}"
     emit("watch_sync", {
-        "action": data.get("action"),  # 'play', 'pause', 'seek'
+        "action": data.get("action"), 
         "time": data.get("time", 0),
         "party_id": party_id
     }, room=room_name, include_self=False)
@@ -1195,7 +1161,6 @@ def _get_lan_ips():
                 ips.append(addr)
     except Exception:
         pass
-    # Fallback: connect to a non-routable address to discover the default LAN IP
     if not ips:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -1241,7 +1206,6 @@ def ensure_self_signed_certs():
     if need_generation:
         print("Generating self-signed SSL certificates for HTTPS support...")
         import subprocess
-        # Build SAN list: localhost + all detected LAN IPs
         san_entries = ["DNS:localhost", "IP:127.0.0.1"]
         for ip in lan_ips:
             san_entries.append(f"IP:{ip}")
@@ -1276,7 +1240,6 @@ def ensure_self_signed_certs():
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-        # Fallback database migrations: add reply_to_id columns to existing databases
         try:
             db.session.execute(db.text("ALTER TABLE message ADD COLUMN reply_to_id INTEGER REFERENCES message(id)"))
             db.session.commit()
@@ -1291,7 +1254,6 @@ if __name__ == "__main__":
 
     socketio.start_background_task(cleanup_offline_users, online_users, socketio)
 
-    # Always run in HTTPS mode — generate certs if they don't exist
     ensure_self_signed_certs()
 
     if os.path.exists("key.pem") and os.path.exists("cert.pem"):
