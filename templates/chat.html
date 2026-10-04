@@ -6,6 +6,10 @@
     <meta name="theme-color" content="#0b1121">
     <title>FileShare Pro - Chat</title>
     <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/emoji-picker.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/emoji-picker.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -1000,6 +1004,7 @@
                     </div>
 
                     <div class="input-wrapper">
+                        <button class="icon-btn" id="emojiTriggerBtn" title="Insert emoji" aria-label="Emoji picker" style="flex-shrink:0;" onclick="(function(e){e.stopPropagation();window.LANEmojiPicker.open({anchor:document.getElementById('messageInput'),triggerBtn:document.getElementById('emojiTriggerBtn'),mode:'input',onSelect:function(em){window.LANEmojiPicker.insertAtCursor(document.getElementById('messageInput'),em);}});})(event)">😊</button>
                         <textarea class="chat-input" id="messageInput" placeholder="Type a message…" rows="1" onkeydown="handleKeydown(event)"></textarea>
                         <div class="input-actions">
                             <button class="icon-btn" id="micBtn" onclick="toggleRecording()" title="Record audio" aria-label="Record audio">
@@ -1016,8 +1021,8 @@
     </main>
 </div>
 
-<!-- Emoji Picker Popup -->
-<div id="emojiPopup" class="emoji-picker hidden"></div>
+<!-- Full Emoji Picker (replaces old static emojiPopup) -->
+<div id="lan-emoji-picker-root"></div>
 
 <div class="toast-container" id="toastContainer"></div>
 
@@ -1146,21 +1151,13 @@
     });
 
 
-    function maybeNotifyChat(data) {
-      if (typeof Notification === 'undefined') return;
-      if (windowFocused) return;
-      if (data && data.user && userName && data.user === userName) return;
-      var title = '[Chat] ' + (data.user || 'Anonymous');
-      var body = (data.content || '');
-      if (data.type === 'audio') {
-        body = '🎤 Voice Message';
-      } else if (typeof body === 'string' && body.length > 80) {
-        body = body.substring(0, 77) + '...';
-      }
-      try {
-        new Notification(title, { body: body });
-      } catch (e) {}
-    }
+    // Initialize LANNotifications — handles chime, toast banner, desktop push, tab title
+    window.LANNotifications.init({
+        socket: socket,
+        currentUser: userName,
+        activeChannel: 'chat',
+        activePartner: null
+    });
 
     socket.on('disconnect', (reason) => {
         document.getElementById('chatSubtext').textContent = 'Disconnected';
@@ -1202,11 +1199,7 @@
             reply_to_content: data.reply_to_content
         });
         updateCount();
-        if (!windowFocused && (!data.user || data.user !== userName)) {
-            unreadPublic++;
-            updateTitleChat();
-            maybeNotifyChat(data);
-        }
+        // LANNotifications handles suppression, chime, toast, desktop push, and title badge
     });
 
     // FIX 9: Removed dead new_audio handler - server uses new_message for audio
@@ -1430,70 +1423,19 @@
         socket.emit('delete_message', { message_id: id, user: userName });
     }
 
-    const COMMON_EMOJIS = ['😀','😁','😂','🤣','😊','😉','😍','😘','🤔','🤨','😐','😔','😢','😭','😠','🤪','😴','🤢','😞','👍','👎','👏','🙌','🙏','👐','✌️','❤️','🧡','💛','💚','💙','💜','💖','💔','🔥','✨','⭐','💫','💯','🎉','🎊','⚠️','🚫','✅','❌','🚀','💬','💭','👀','👇','👆','🎵','🔔','💻','💡','⚙️','😆','😌','😏','🧐','🌈','🍕','🍔','🍨','🐶','🐱','🦄','🐉','🚗','✈️','🚢','🚆','☀️','🌙','☁️','⚡','❄️','☂️'];
-
+    // Legacy emoji picker replaced by window.LANEmojiPicker (emoji-picker.js)
+    // Reaction mode: opens the full searchable emoji keyboard above each message
     function openEmojiPicker(event, messageId) {
         event.stopPropagation();
-        const popup = document.getElementById('emojiPopup');
-        popup.innerHTML = '';
-        popup.classList.remove('hidden');
-
-        COMMON_EMOJIS.forEach(emoji => {
-            const btn = document.createElement('button');
-            btn.className = 'emoji-btn';
-            btn.textContent = emoji;
-            btn.onclick = (e) => {
-                e.stopPropagation();
-                toggleReaction(messageId, emoji);
-                closeEmojiPicker();
-            };
-            popup.appendChild(btn);
-        });
-
         const triggerBtn = event.currentTarget;
-        const rect = triggerBtn.getBoundingClientRect();
-        
-        // Temporarily clear hidden class and display as grid to accurately measure dimensions
-        const origDisplay = popup.style.display;
-        popup.style.display = 'grid';
-        const popupWidth = popup.offsetWidth || 180;
-        const popupHeight = popup.offsetHeight || 96;
-        popup.style.display = origDisplay;
-
-        // Calculate centering above the reaction button
-        let left = rect.left + (rect.width / 2) - (popupWidth / 2);
-        let top = rect.top - popupHeight - 8;
-
-        // Horizontally bind to visible viewport
-        const boundaryMargin = 12;
-        if (left < boundaryMargin) {
-            left = boundaryMargin;
-        } else if (left + popupWidth > window.innerWidth - boundaryMargin) {
-            left = window.innerWidth - popupWidth - boundaryMargin;
-        }
-
-        // Vertically bind (show below if not enough space above)
-        if (top < boundaryMargin) {
-            top = rect.bottom + 8;
-        }
-
-        popup.style.left = left + 'px';
-        popup.style.top = top + 'px';
-        popup.style.bottom = 'auto';
-        popup.style.transform = 'none';
-
-        // Auto-close on click anywhere
-        setTimeout(() => document.addEventListener('click', closeEmojiPicker, { once: true }), 0);
-
-        // Auto-close on scrolling the message box
-        const area = document.getElementById('messagesArea');
-        if (area) {
-            area.addEventListener('scroll', closeEmojiPicker, { once: true });
-        }
-    }
-
-    function closeEmojiPicker() {
-        document.getElementById('emojiPopup').classList.add('hidden');
+        window.LANEmojiPicker.open({
+            anchor: triggerBtn,
+            triggerBtn: triggerBtn,
+            mode: 'reaction',
+            onSelect: function(emoji) {
+                toggleReaction(messageId, emoji);
+            }
+        });
     }
 
     function toggleReaction(messageId, emoji) {
