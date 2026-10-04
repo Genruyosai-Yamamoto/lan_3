@@ -1,0 +1,101 @@
+.lan-emoji-picker {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    height: 380px;
+    background: var(--surface, #1e293b);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    overflow: hidden;
+    animation: emojiPop 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+@keyframes emojiPop {
+    from { opacity: 0; transform: scale(0.95) translateY(4px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.lan-emoji-picker.hidden {
+    display: none !important;
+}
+.lan-emoji-search-box {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-alt, rgba(0, 0, 0, 0.15));
+}
+.lan-emoji-search-input {
+    flex: 1;
+    background: var(--bg, #0f172a);
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: var(--text, #f8fafc);
+    outline: none;
+}
+.lan-emoji-search-input:focus {
+    border-color: #25d366;
+}
+.lan-emoji-categories {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+    background: var(--surface, #1e293b);
+}
+.lan-emoji-cat-btn {
+    background: none;
+    border: none;
+    font-size: 16px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s, background 0.15s;
+}
+.lan-emoji-cat-btn:hover,
+.lan-emoji-cat-btn.active {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.08);
+}
+.lan-emoji-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 10px;
+}
+.lan-emoji-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--text-muted, #94a3b8);
+    margin: 6px 0 4px 2px;
+}
+.lan-emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+}
+.lan-emoji-item {
+    font-size: 20px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.1s, background 0.1s;
+}
+.lan-emoji-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: scale(1.2);
+}
