@@ -14,7 +14,11 @@
             this.toastContainer = null;
 
             this._bindEvents();
-            this._createToastContainer();
+            if (document.body) {
+                this._createToastContainer();
+            } else {
+                document.addEventListener('DOMContentLoaded', () => this._createToastContainer());
+            }
         }
 
         _bindEvents() {
@@ -51,13 +55,17 @@
         }
 
         _createToastContainer() {
-            if (!document.querySelector('.lan-toast-container')) {
-                this.toastContainer = document.createElement('div');
-                this.toastContainer.className = 'lan-toast-container';
-                document.body.appendChild(this.toastContainer);
-            } else {
-                this.toastContainer = document.querySelector('.lan-toast-container');
+            if (!this.toastContainer || !this.toastContainer.parentNode) {
+                const existing = document.querySelector('.lan-toast-container');
+                if (existing) {
+                    this.toastContainer = existing;
+                } else if (document.body) {
+                    this.toastContainer = document.createElement('div');
+                    this.toastContainer.className = 'lan-toast-container';
+                    document.body.appendChild(this.toastContainer);
+                }
             }
+            return this.toastContainer;
         }
 
         init({ socket, currentUser, activeChannel, activePartner }) {
@@ -105,12 +113,26 @@
             if (sender === this.currentUser) return;
 
             // Check if user is currently active in this conversation
-            const isCurrentChatActive = this.isWindowFocused && this.activeChannel === 'chat' && type === 'chat';
-            const isCurrentDMActive = this.isWindowFocused && this.activeChannel === 'dm' && type === 'dm' &&
+            let isCurrentChatActive = this.isWindowFocused && this.activeChannel === 'chat' && type === 'chat';
+            let isCurrentDMActive = this.isWindowFocused && this.activeChannel === 'dm' && type === 'dm' &&
                 (this.activePartner === sender || this.activePartner === receiver);
 
+            // Active view suppression rule: If user is scrolled up (>150px from bottom), do not suppress!
+            if (isCurrentChatActive) {
+                const area = document.getElementById('messagesArea');
+                if (area && (area.scrollHeight - area.scrollTop - area.clientHeight > 150)) {
+                    isCurrentChatActive = false; // Scrolled up in chat -> show toast banner & chime
+                }
+            }
+            if (isCurrentDMActive) {
+                const area = document.getElementById('messagesArea');
+                if (area && (area.scrollHeight - area.scrollTop - area.clientHeight > 150)) {
+                    isCurrentDMActive = false; // Scrolled up in DM -> show toast banner & chime
+                }
+            }
+
             if (isCurrentChatActive || isCurrentDMActive) {
-                // User is actively reading this conversation
+                // User is actively reading this conversation at the bottom
                 return;
             }
 
@@ -129,7 +151,7 @@
             }
 
             const channelTag = type === 'dm' ? `🔒 DM from ${sender}` : `💬 Public Chat: ${sender}`;
-            const targetUrl = type === 'dm' ? `/dm` : `/chat`;
+            const targetUrl = type === 'dm' ? `/dm/start_dm/${encodeURIComponent(sender)}` : `/chat`;
 
             // If window is backgrounded/minimized, send desktop push
             if (!this.isWindowFocused) {
@@ -234,7 +256,10 @@
                 toast.remove();
             });
 
-            this.toastContainer.appendChild(toast);
+            const container = this._createToastContainer();
+            if (container) {
+                container.appendChild(toast);
+            }
 
             setTimeout(() => {
                 toast.classList.add('hiding');

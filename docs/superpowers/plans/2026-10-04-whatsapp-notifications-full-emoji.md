@@ -32,7 +32,7 @@
   - `updateTitle(unreadDelta)`
   - `clearUnread()`
 
-- [ ] **Step 1: Create `static/css/notifications.css`**
+- [x] **Step 1: Create `static/css/notifications.css`**
 Define styling for the floating in-app toast banner, progress bar, sender avatar, and message preview.
 ```css
 /* Floating in-app WhatsApp notification toast */
@@ -140,7 +140,7 @@ Define styling for the floating in-app toast banner, progress bar, sender avatar
 }
 ```
 
-- [ ] **Step 2: Create `static/js/notifications.js`**
+- [x] **Step 2: Create `static/js/notifications.js`**
 Implement the Web Audio API WhatsApp sound synthesizer, unread title tracking, desktop push, in-app toast manager, and focus suppression.
 ```javascript
 (function(window) {
@@ -424,7 +424,7 @@ Implement the Web Audio API WhatsApp sound synthesizer, unread title tracking, d
 })(window);
 ```
 
-- [ ] **Step 3: Commit Notification Engine files**
+- [x] **Step 3: Commit Notification Engine files**
 ```bash
 git add static/css/notifications.css static/js/notifications.js
 git commit -m "feat(notifications): add Web Audio WhatsApp chime, in-app toast, and unread title tracking"
@@ -445,7 +445,7 @@ git commit -m "feat(notifications): add Web Audio WhatsApp chime, in-app toast, 
   - `close()`
   - `insertAtCursor(textarea, emojiChar)`
 
-- [ ] **Step 1: Create `static/css/emoji-picker.css`**
+- [x] **Step 1: Create `static/css/emoji-picker.css`**
 WhatsApp-style layout with category tab bar, search input, smooth emoji grid, hover reactions, and scrollable container.
 ```css
 .lan-emoji-picker {
@@ -551,7 +551,7 @@ WhatsApp-style layout with category tab bar, search input, smooth emoji grid, ho
 }
 ```
 
-- [ ] **Step 2: Create `static/js/emoji-picker.js`**
+- [x] **Step 2: Create `static/js/emoji-picker.js`**
 Pack the comprehensive WhatsApp Unicode emoji library organized into standard categories with search keywords, local storage favorites, cursor insertion, and reaction binding.
 ```javascript
 (function(window) {
@@ -1758,7 +1758,7 @@ Pack the comprehensive WhatsApp Unicode emoji library organized into standard ca
 })(window);
 ```
 
-- [ ] **Step 3: Commit Emoji Engine files**
+- [x] **Step 3: Commit Emoji Engine files**
 ```bash
 git add static/css/emoji-picker.css static/js/emoji-picker.js
 git commit -m "feat(emoji): add WhatsApp-style categorized searchable emoji keyboard and picker"
@@ -1773,16 +1773,16 @@ git commit -m "feat(emoji): add WhatsApp-style categorized searchable emoji keyb
 - Modify: `templates/uploads.html`
 - Modify: `templates/watch.html`
 
-- [ ] **Step 1: Update `templates/index.html`**
+- [x] **Step 1: Update `templates/index.html`**
 Include `notifications.css` in `<head>` and `notifications.js` before `</body>`. Initialize `LANNotifications.init({ socket, currentUser: userName, activeChannel: 'index' })`.
 
-- [ ] **Step 2: Update `templates/uploads.html`**
+- [x] **Step 2: Update `templates/uploads.html`**
 Include `notifications.css` in `<head>` and `notifications.js` before `</body>`. Initialize `LANNotifications.init({ socket, currentUser, activeChannel: 'uploads' })`.
 
-- [ ] **Step 3: Update `templates/watch.html`**
+- [x] **Step 3: Update `templates/watch.html`**
 Include `notifications.css` in `<head>` and `notifications.js` before `</body>`. Initialize `LANNotifications.init({ socket, currentUser, activeChannel: 'watch' })`.
 
-- [ ] **Step 4: Commit Global Notification Integration**
+- [x] **Step 4: Commit Global Notification Integration**
 ```bash
 git add templates/index.html templates/uploads.html templates/watch.html
 git commit -m "feat(notifications): attach global notifications and WhatsApp chime to dashboard, files, and watch party"
@@ -1795,7 +1795,7 @@ git commit -m "feat(notifications): attach global notifications and WhatsApp chi
 **Files:**
 - Modify: `templates/chat.html`
 
-- [ ] **Step 1: Add Emoji Picker Button to Input Bar**
+- [x] **Step 1: Add Emoji Picker Button to Input Bar**
 In `templates/chat.html`, add an emoji button `😊` inside `.input-wrapper` right before the textarea or in `.input-actions`:
 ```html
 <button class="icon-btn" id="emojiToggleBtn" type="button" title="Insert emoji" aria-label="Insert emoji">
@@ -1806,18 +1806,18 @@ In `templates/chat.html`, add an emoji button `😊` inside `.input-wrapper` rig
 </button>
 ```
 
-- [ ] **Step 2: Include stylesheets and scripts**
+- [x] **Step 2: Include stylesheets and scripts**
 Include `notifications.css` and `emoji-picker.css` in `<head>`.
 Include `notifications.js` and `emoji-picker.js` before `</body>`.
 
-- [ ] **Step 3: Wire Emoji Button & Message Reactions to `LANEmojiPicker`**
+- [x] **Step 3: Wire Emoji Button & Message Reactions to `LANEmojiPicker`**
 Connect `emojiToggleBtn` click to open `LANEmojiPicker.open({ anchor: messageInput, triggerBtn: emojiToggleBtn, onSelect: (emoji) => LANEmojiPicker.insertAtCursor(messageInput, emoji) })`.
 Connect reaction button `+` on messages to open `LANEmojiPicker.open({ anchor: messageEl, mode: 'reaction', onSelect: (emoji) => addReaction(messageId, emoji) })`.
 
-- [ ] **Step 4: Wire Notification System in `chat.html`**
+- [x] **Step 4: Wire Notification System in `chat.html`**
 Initialize `LANNotifications.init({ socket, currentUser: userName, activeChannel: 'chat' })`.
 
-- [ ] **Step 5: Commit `chat.html` changes**
+- [x] **Step 5: Commit `chat.html` changes**
 ```bash
 git add templates/chat.html
 git commit -m "feat(chat): integrate WhatsApp input emoji button, reaction picker, and notifications"
@@ -1830,20 +1830,20 @@ git commit -m "feat(chat): integrate WhatsApp input emoji button, reaction picke
 **Files:**
 - Modify: `templates/dm.html`
 
-- [ ] **Step 1: Add Emoji Button to DM Input Bar**
+- [x] **Step 1: Add Emoji Button to DM Input Bar**
 Add the identical `emojiToggleBtn` inside DM message input bar.
 
-- [ ] **Step 2: Include stylesheets and scripts**
+- [x] **Step 2: Include stylesheets and scripts**
 Include `notifications.css` and `emoji-picker.css` in `<head>`.
 Include `notifications.js` and `emoji-picker.js` before `</body>`.
 
-- [ ] **Step 3: Wire Emoji Picker to DM input and DM reactions**
+- [x] **Step 3: Wire Emoji Picker to DM input and DM reactions**
 Connect `LANEmojiPicker` to `messageInput` and message reactions in `dm.html`.
 
-- [ ] **Step 4: Wire Notification System with Active Partner**
+- [x] **Step 4: Wire Notification System with Active Partner**
 Initialize `LANNotifications.init({ socket, currentUser: userName, activeChannel: 'dm', activePartner: partnerUser })`.
 
-- [ ] **Step 5: Commit `dm.html` changes**
+- [x] **Step 5: Commit `dm.html` changes**
 ```bash
 git add templates/dm.html
 git commit -m "feat(dm): integrate WhatsApp input emoji button, reaction picker, and notifications"
@@ -1853,22 +1853,22 @@ git commit -m "feat(dm): integrate WhatsApp input emoji button, reaction picker,
 
 ### Task 6: End-to-End Verification & QA
 
-- [ ] **Step 1: Verify syntax and template rendering**
+- [x] **Step 1: Verify syntax and template rendering**
 Run `python3 -m py_compile app.py` and inspect DOM integrity.
 
-- [ ] **Step 2: Test Emoji Picker Functionality**
+- [x] **Step 2: Test Emoji Picker Functionality**
 - Open `/chat`:
   - Click 😊 button: verify category tabs switch, search filters emojis in real time, clicking an emoji inserts at cursor in `messageInput`.
   - Click reaction on message: verify full emoji picker opens and clicking adds reaction.
 - Open `/dm`:
   - Verify same emoji keyboard behaviors.
 
-- [ ] **Step 3: Test Notification Suite**
+- [x] **Step 3: Test Notification Suite**
 - Background tab: send message from another tab/window. Verify Web Audio two-tone WhatsApp chime plays, desktop push notification triggers, and tab title updates to `(1) LAN Chat`.
 - Foreground on `/uploads`: receive chat message. Verify in-app floating banner toast slides down with avatar and preview, clicking navigates to `/chat`.
 - Foreground on active chat: verify alerts are suppressed and message renders smoothly.
 
-- [ ] **Step 4: Final Git Status & Clean Commit**
+- [x] **Step 4: Final Git Status & Clean Commit**
 ```bash
 git status
 ```

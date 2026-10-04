@@ -1029,7 +1029,15 @@
             body.className = 'lan-emoji-body';
             this.container.appendChild(body);
 
-            document.body.appendChild(this.container);
+            if (document.body) {
+                document.body.appendChild(this.container);
+            } else {
+                document.addEventListener('DOMContentLoaded', () => {
+                    if (this.container && !this.container.parentNode && document.body) {
+                        document.body.appendChild(this.container);
+                    }
+                });
+            }
             this.bodyEl = body;
             this.searchInput = searchBox.querySelector('input');
             this.catBar = catBar;
@@ -1087,6 +1095,13 @@
                     this.close();
                 }
             });
+
+            // Auto-close reaction picker on scrolling
+            window.addEventListener('scroll', () => {
+                if (!this.container.classList.contains('hidden') && this.activeMode === 'reaction') {
+                    this.close();
+                }
+            }, true);
         }
 
         renderCategory(catId) {
@@ -1148,6 +1163,9 @@
         }
 
         open({ anchor, mode, onSelect, triggerBtn }) {
+            if (this.container && !this.container.parentNode && document.body) {
+                document.body.appendChild(this.container);
+            }
             this.activeMode = mode || 'input';
             this.currentTarget = anchor;
             this.triggerBtn = triggerBtn || null;

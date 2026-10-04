@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Notifications & Emoji Picker Test Suite</title>
+    <link rel="stylesheet" href="/static/css/emoji-picker.css">
+    <link rel="stylesheet" href="/static/css/notifications.css">
+    <script src="/static/js/emoji-picker.js"></script>
+    <script src="/static/js/notifications.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #25d366;
+            margin-bottom: 0.5rem;
+        }
+        .subtitle {
+            color: #94a3b8;
+            margin-bottom: 2rem;
+        }
+        .card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .btn-group {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+        button.btn {
+            background: #25d366;
+            color: #0f172a;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button.btn:hover {
+            background: #128c7e;
+            color: #fff;
+        }
+        .btn-secondary {
+            background: #334155 !important;
+            color: #f8fafc !important;
+        }
+        .btn-secondary:hover {
+            background: #475569 !important;
+        }
+        textarea {
+            width: 100%;
+            height: 80px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #fff;
+            padding: 0.75rem;
+            font-size: 1rem;
+            box-sizing: border-box;
+            resize: vertical;
+        }
+        .test-results {
+            background: #0b1121;
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        .pass { color: #4ade80; }
+        .fail { color: #f87171; }
+    </style>
+</head>
+<body>
+
+    <h1>WhatsApp Suite Verification Harness</h1>
+    <p class="subtitle">Offline Verification for Web Audio Chimes, Floating Toasts, and Unicode Emoji Keyboard</p>
+
+    <div class="card">
+        <h2>1. Automated Verification Checks</h2>
+        <div class="btn-group">
+            <button class="btn" onclick="runAutomatedTests()">Run Self-Tests</button>
+            <button class="btn btn-secondary" onclick="clearResults()">Clear Log</button>
+        </div>
+        <div style="margin-top: 1rem;">
+            <div id="testOutput" class="test-results">Click "Run Self-Tests" to verify components...</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>2. Emoji Keyboard Interactive Playground</h2>
+        <p style="color: #94a3b8; font-size: 0.9rem;">Test typing and inserting emojis at the cursor position:</p>
+        <div style="display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.5rem;">
+            <button class="btn" id="emojiPlaygroundBtn" title="Emoji Keyboard" onclick="openPlaygroundPicker(event)">😊</button>
+            <textarea id="playgroundTextarea" placeholder="Type here and use the emoji button to insert emojis at cursor…"></textarea>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>3. Notifications & Web Audio Chime Playground</h2>
+        <div class="btn-group">
+            <button class="btn" onclick="testChime()">🔔 Play WhatsApp Chime</button>
+            <button class="btn" onclick="testChatToast()">💬 Trigger Chat Toast</button>
+            <button class="btn" onclick="testDMToast()">🔒 Trigger DM Toast</button>
+            <button class="btn btn-secondary" onclick="testBadgeIncrement()">🏷️ +1 Tab Badge</button>
+            <button class="btn btn-secondary" onclick="window.LANNotifications.clearUnread()">🧹 Clear Badge</button>
+        </div>
+    </div>
+
+    <script>
+        function log(msg, status) {
+            const out = document.getElementById('testOutput');
+            const colorClass = status === true ? 'pass' : (status === false ? 'fail' : '');
+            const prefix = status === true ? '✅ PASS: ' : (status === false ? '❌ FAIL: ' : 'ℹ️ ');
+            const line = document.createElement('div');
+            line.className = colorClass;
+            line.textContent = prefix + msg;
+            out.appendChild(line);
+            out.scrollTop = out.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('testOutput').innerHTML = '';
+        }
+
+        function runAutomatedTests() {
+            clearResults();
+            log('Starting verification suite…');
+
+            // Test 1: LANEmojiPicker singleton exists
+            if (window.LANEmojiPicker) {
+                log('window.LANEmojiPicker is instantiated', true);
+            } else {
+                log('window.LANEmojiPicker is undefined', false);
+            }
+
+            // Test 2: LANNotifications singleton exists
+            if (window.LANNotifications) {
+                log('window.LANNotifications is instantiated', true);
+            } else {
+                log('window.LANNotifications is undefined', false);
+            }
+
+            // Test 3: AudioContext capability
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) {
+                log('Browser supports Web Audio API (AudioContext)', true);
+            } else {
+                log('Web Audio API not supported in this browser', false);
+            }
+
+            // Test 4: Emoji insertion at cursor
+            const area = document.getElementById('playgroundTextarea');
+            area.value = 'Hello World';
+            area.selectionStart = 5;
+            area.selectionEnd = 5;
+            window.LANEmojiPicker.insertAtCursor(area, ' 🚀');
+            if (area.value === 'Hello 🚀 World') {
+                log('LANEmojiPicker.insertAtCursor successfully inserted emoji at cursor position', true);
+            } else {
+                log('insertAtCursor failed: ' + area.value, false);
+            }
+
+            // Test 5: Recent emojis persistence
+            try {
+                window.LANEmojiPicker._saveRecent('🎉');
+                const recent = JSON.parse(localStorage.getItem('lan_recent_emojis') || '[]');
+                if (recent && recent[0] === '🎉') {
+                    log('Recent emoji persistence to localStorage passed', true);
+                } else {
+                    log('Recent emoji persistence failed', false);
+                }
+            } catch (e) {
+                log('LocalStorage test error: ' + e.message, false);
+            }
+
+            // Test 6: Title unread badge formatting
+            const origTitle = document.title;
+            window.LANNotifications.unreadCount = 3;
+            window.LANNotifications.updateTitle();
+            if (document.title.includes('(3)')) {
+                log('Unread title count correctly formats tab badge: ' + document.title, true);
+            } else {
+                log('Title update failed: ' + document.title, false);
+            }
+            window.LANNotifications.clearUnread();
+            if (!document.title.includes('(3)')) {
+                log('clearUnread successfully clears badge: ' + document.title, true);
+            } else {
+                log('clearUnread failed', false);
+            }
+
+            // Test 7: Suppression matrix checks
+            window.LANNotifications.currentUser = 'Alice';
+            window.LANNotifications.activeChannel = 'chat';
+            window.LANNotifications.isWindowFocused = true;
+
+            // Self message should be suppressed
+            const prevUnread = window.LANNotifications.unreadCount;
+            window.LANNotifications.handleIncomingMessage({
+                type: 'chat',
+                sender: 'Alice',
+                content: 'My own message'
+            });
+            if (window.LANNotifications.unreadCount === prevUnread) {
+                log('Suppression Rule 1: Self-messages are correctly suppressed', true);
+            } else {
+                log('Self-message suppression failed', false);
+            }
+
+            // Active chat message should be suppressed when focused
+            window.LANNotifications.handleIncomingMessage({
+                type: 'chat',
+                sender: 'Bob',
+                content: 'Message in active focused chat'
+            });
+            if (window.LANNotifications.unreadCount === prevUnread) {
+                log('Suppression Rule 2: Active channel messages when focused are correctly suppressed', true);
+            } else {
+                log('Active channel suppression failed', false);
+            }
+
+            log('All automated checks complete!');
+        }
+
+        function openPlaygroundPicker(e) {
+            e.stopPropagation();
+            const btn = document.getElementById('emojiPlaygroundBtn');
+            const textarea = document.getElementById('playgroundTextarea');
+            window.LANEmojiPicker.open({
+                anchor: textarea,
+                triggerBtn: btn,
+                mode: 'input',
+                onSelect: function(emoji) {
+                    window.LANEmojiPicker.insertAtCursor(textarea, emoji);
+                }
+            });
+        }
+
+        function testChime() {
+            window.LANNotifications.playChime();
+            log('Played WhatsApp Web Audio chime', true);
+        }
+
+        function testChatToast() {
+            window.LANNotifications.showToast({
+                sender: 'Maria Santos',
+                tag: 'Public Chat',
+                body: 'Hey everyone, check out the new design! 🎉',
+                onClick: () => {
+                    log('Clicked Chat toast notification!');
+                }
+            });
+            window.LANNotifications.playChime();
+        }
+
+        function testDMToast() {
+            window.LANNotifications.showToast({
+                sender: 'David Kim',
+                tag: 'Direct Message',
+                body: 'Can you send me the latest file link? 📁',
+                onClick: () => {
+                    log('Clicked DM toast notification!');
+                }
+            });
+            window.LANNotifications.playChime();
+        }
+
+        function testBadgeIncrement() {
+            window.LANNotifications.unreadCount++;
+            window.LANNotifications.updateTitle();
+            log('Incremented unread badge to: ' + window.LANNotifications.unreadCount);
+        }
+    </script>
+</body>
+</html>
