@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0b1121">
-    <title>FileShare Pro — Direct Chat</title>
+    <title>FileShare Pro - Direct Chat</title>
     <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1099,7 +1099,7 @@
     document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
 
     const partnerName = "{{ partner or '' }}";
-    // FIX 2: Parse conversationId as integer — server expects int for conversation_id
+    // FIX 2: Parse conversationId as integer - server expects int for conversation_id
     const conversationId = {{ conversation.id if conversation else 'null' }};
 
     const messageReactions = {};
@@ -1325,7 +1325,7 @@
     });
 
     socket.on('disconnect', (reason) => {
-        document.getElementById('chatSubtext').textContent = 'Disconnected — reconnecting\u2026';
+        document.getElementById('chatSubtext').textContent = 'Disconnected - reconnecting\u2026';
         // FIX 7: Update live indicator on disconnect
         const indicator = document.getElementById('liveIndicator');
         if (indicator) {
@@ -1355,7 +1355,7 @@
     socket.on('new_private_message', async (data) => {
         let displayContent = data.content;
         if (data.type === 'audio') {
-            // FIX 10: For audio messages, content is the filepath — don't try to decrypt
+            // FIX 10: For audio messages, content is the filepath - don't try to decrypt
             displayContent = data.content;
         } else if (data.content && data.content.startsWith('enc:') && sharedKey) {
             displayContent = await decryptMessage(data.content, sharedKey);
@@ -1458,7 +1458,7 @@
                 if (editBtn) editBtn.classList.remove('hidden');
                 if (deleteBtn) deleteBtn.classList.remove('hidden');
             } else {
-                // FIX 12: Handle re-login — remove .own from messages that no longer match
+                // FIX 12: Handle re-login - remove .own from messages that no longer match
                 msg.classList.remove('own');
             }
         });

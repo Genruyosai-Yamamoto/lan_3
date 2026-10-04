@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0b1121">
-    <title>FileShare Pro — Chat</title>
+    <title>FileShare Pro - Chat</title>
     <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1187,7 +1187,7 @@
         updateCount();
     });
 
-    // FIX 9: Removed dead new_audio handler — server uses new_message for audio
+    // FIX 9: Removed dead new_audio handler - server uses new_message for audio
 
     socket.on('message_edited', (data) => {
         const msg = document.querySelector('.message[data-id="' + data.id + '"]');
@@ -1634,7 +1634,7 @@
         }
     }
 
-    // FIX 14: Server sends an ARRAY, not a dict — use proper iteration
+    // FIX 14: Server sends an ARRAY, not a dict - use proper iteration
     function renderOnlineUsers(users) {
         const container = document.getElementById('userList');
         const list = Array.isArray(users) ? users : [];
