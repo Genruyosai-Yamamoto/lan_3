@@ -1099,6 +1099,50 @@
     document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
 
     const partnerName = "{{ partner or '' }}";
+
+    const baseTitleDM = document.title || 'Direct Chat';
+    let windowFocusedDM = true;
+    let unreadDMByPartner = {};
+    let notifyPermissionRequestedDM = false;
+
+    function updateTitleDM() {
+      var total = 0;
+      for (var k in unreadDMByPartner) {
+        if (Object.prototype.hasOwnProperty.call(unreadDMByPartner, k)) total += unreadDMByPartner[k];
+      }
+      if (total > 0) {
+        document.title = '(' + total + ') ' + baseTitleDM;
+      } else {
+        document.title = baseTitleDM;
+      }
+    }
+
+    function requestNotifyPermissionDM() {
+      if (notifyPermissionRequestedDM) return;
+      notifyPermissionRequestedDM = true;
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        try { Notification.requestPermission().catch(function(){}); } catch(e){}
+      }
+    }
+
+    window.addEventListener('focus', function() {
+      windowFocusedDM = true;
+      if (partnerName) unreadDMByPartner[partnerName] = 0;
+      updateTitleDM();
+    });
+    window.addEventListener('blur', function() {
+      windowFocusedDM = false;
+    });
+    document.addEventListener('visibilitychange', function() {
+      windowFocusedDM = document.visibilityState === 'visible';
+      if (windowFocusedDM && partnerName) {
+        unreadDMByPartner[partnerName] = 0;
+        updateTitleDM();
+      }
+    });
+    ['click','keydown','touchstart'].forEach(function(evt) {
+      document.addEventListener(evt, requestNotifyPermissionDM, { once: true, passive: true });
+    });
     // FIX 2: Parse conversationId as integer - server expects int for conversation_id
     const conversationId = {{ conversation.id if conversation else 'null' }};
 
@@ -1324,6 +1368,27 @@
         }
     });
 
+
+    async function maybeNotifyDM(data) {
+      if (typeof Notification === 'undefined') return;
+      if (windowFocusedDM && partnerName && data.sender === partnerName) return;
+      if (windowFocusedDM) return;
+      if (data.sender === userName) return;
+      var title = '[DM] ' + (data.sender || 'Anonymous');
+      var body = (data.content || '');
+      if (data.type === 'audio') {
+        body = '🎤 Voice Message';
+      } else if (body && body.startsWith('enc:') && sharedKey) {
+        try {
+          body = await decryptMessage(body, sharedKey);
+        } catch (e) {}
+      }
+      if (typeof body === 'string' && body.length > 80) {
+        body = body.substring(0, 77) + '...';
+      }
+      try { new Notification(title, { body: body }); } catch(e){}
+    }
+
     socket.on('disconnect', (reason) => {
         document.getElementById('chatSubtext').textContent = 'Disconnected - reconnecting\u2026';
         // FIX 7: Update live indicator on disconnect
@@ -1352,10 +1417,9 @@
         renderDMUsers(users);
     });
 
-    socket.on('new_private_message', async (data) => {
+        socket.on('new_private_message', async (data) => {
         let displayContent = data.content;
         if (data.type === 'audio') {
-            // FIX 10: For audio messages, content is the filepath - don't try to decrypt
             displayContent = data.content;
         } else if (data.content && data.content.startsWith('enc:') && sharedKey) {
             displayContent = await decryptMessage(data.content, sharedKey);
@@ -1378,6 +1442,20 @@
             reply_to_user: data.reply_to_user,
             reply_to_content: displayReplyContent
         });
+        updateCount();
+        var isActive = partnerName && data.sender === partnerName && windowFocusedDM;
+        if (isActive) {
+            if (partnerName) unreadDMByPartner[partnerName] = 0;
+            updateTitleDM();
+            return;
+        }
+        if (data.sender !== userName) {
+            if (!unreadDMByPartner[data.sender]) unreadDMByPartner[data.sender] = 0;
+            unreadDMByPartner[data.sender]++;
+            updateTitleDM();
+            maybeNotifyDM(data);
+        }
+    });;
         updateCount();
     });
 
