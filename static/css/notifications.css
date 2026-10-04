@@ -1,0 +1,103 @@
+/* Floating in-app WhatsApp notification toast */
+.lan-toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+.lan-toast {
+    pointer-events: auto;
+    width: 320px;
+    max-width: 90vw;
+    background: var(--surface, #1e293b);
+    color: var(--text, #f8fafc);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: 12px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    padding: 12px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.lan-toast:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px -5px rgba(0, 0, 0, 0.5);
+}
+@keyframes toastSlideIn {
+    from { transform: translateX(110%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+.lan-toast.hiding {
+    animation: toastSlideOut 0.25s forwards ease-in;
+}
+@keyframes toastSlideOut {
+    to { transform: translateX(110%); opacity: 0; }
+}
+.lan-toast-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #25d366, #128c7e);
+    color: #fff;
+    font-weight: 700;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.lan-toast-content {
+    flex: 1;
+    min-width: 0;
+}
+.lan-toast-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2px;
+}
+.lan-toast-sender {
+    font-weight: 600;
+    font-size: 14px;
+    color: #25d366;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.lan-toast-tag {
+    font-size: 10px;
+    text-transform: uppercase;
+    background: rgba(255,255,255,0.08);
+    padding: 1px 6px;
+    border-radius: 4px;
+    opacity: 0.7;
+}
+.lan-toast-body {
+    font-size: 13px;
+    color: var(--text-muted, #94a3b8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.lan-toast-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: #25d366;
+    width: 100%;
+    animation: toastProgress 4.5s linear forwards;
+}
+@keyframes toastProgress {
+    from { width: 100%; }
+    to { width: 0%; }
+}
