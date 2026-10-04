@@ -1,14 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Upload Status</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Status Dashboard</title>
+    <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 2rem; background: #f1f5f9; color: #0f172a; }
+        h1 { margin-bottom: 1rem; font-size: 1.5rem; }
+        table { border-collapse: collapse; width: 100%; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; font-weight: 600; font-size: 0.875rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    </style>
 </head>
 
 <body>
 
 <h1>Upload Status Dashboard</h1>
 
-<table border="1">
+<table>
     <tr>
         <th>Upload ID</th>
         <th>File</th>
@@ -24,5 +35,30 @@
     {% endfor %}
 </table>
 
+<script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+<script>
+    // Global notification listener for the uploads dashboard
+    const _uploadsUser = sessionStorage.getItem('fs_username') || 'Anonymous';
+    const _uploadsSocket = io({
+        transports: ['polling', 'websocket'],
+        upgrade: true,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000
+    });
+    _uploadsSocket.on('connect', () => {
+        _uploadsSocket.emit('user_online', { name: _uploadsUser });
+    });
+    setInterval(() => {
+        if (_uploadsSocket.connected) _uploadsSocket.emit('heartbeat', { name: _uploadsUser });
+    }, 5000);
+    window.LANNotifications.init({
+        socket: _uploadsSocket,
+        currentUser: _uploadsUser,
+        activeChannel: 'uploads',
+        activePartner: null
+    });
+</script>
 </body>
 </html>
