@@ -3,9 +3,29 @@ monkey.patch_all()
 
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, session, abort, Response, jsonify
 import os
+import sys
+import ssl
 import queue
 import threading
 import uuid
+
+try:
+    from geventwebsocket.handler import WebSocketHandler
+
+    def _custom_log_request(self):
+        msg = self.format_request() + "\n"
+        log = getattr(self.server, "log", None)
+        if log and hasattr(log, "write"):
+            log.write(msg)
+            if hasattr(log, "flush"):
+                log.flush()
+        else:
+            sys.stderr.write(msg)
+            sys.stderr.flush()
+
+    WebSocketHandler.log_request = _custom_log_request
+except ImportError:
+    pass
 from flask_socketio import SocketIO, emit, join_room
 from flask_sqlalchemy import SQLAlchemy
 from data import db, Message, Reaction, PrivateMessage, Conversation, UserKey, PrivateReaction
@@ -159,6 +179,17 @@ def file_count():
 # SOCKET EVENTS
 # =========================
 
+def _delayed_disconnect(username, sid):
+    socketio.sleep(4)
+    if username and username in online_users:
+        if online_users[username].get("sid") == sid:
+            del online_users[username]
+            print(f"DISCONNECTED: {username} (SID: {sid})")
+            print("ONLINE USERS:", online_users)
+            print("----------------")
+            socketio.emit("online_users", list(online_users.values()))
+
+
 @socketio.on("connect")
 def handle_connect(auth=None):
     print(f"CONNECTED: {request.sid}")
@@ -167,19 +198,12 @@ def handle_connect(auth=None):
 @socketio.on("disconnect")
 def handle_disconnect():
     sid = request.sid
-
     username = sid_to_username.pop(sid, None)
 
-    if username and username in online_users:
-        
-        if online_users[username].get("sid") == sid:
-            del online_users[username]
-
-    print(f"DISCONNECTED: {username or 'unknown'} (SID: {sid})")
-    print("ONLINE USERS:", online_users)
-    print("----------------")
-
-    socketio.emit("online_users", list(online_users.values()))
+    if username and username in online_users and online_users[username].get("sid") == sid:
+        socketio.start_background_task(_delayed_disconnect, username, sid)
+    else:
+        print(f"DISCONNECTED: {username or 'unknown'} (SID: {sid})")
 
 
 @socketio.on("user_online")
@@ -189,8 +213,14 @@ def handle_user_online(data):
         return
 
     if username in online_users and online_users[username].get("sid") != request.sid:
-        emit("username_taken", {"username": username})
-        return
+        existing_user = online_users[username]
+        is_same_client = (
+            existing_user.get("ip") == request.remote_addr or
+            session.get("username") == username
+        )
+        if not is_same_client:
+            emit("username_taken", {"username": username})
+            return
 
     old_sid = online_users.get(username, {}).get("sid")
     if old_sid and old_sid != request.sid and old_sid in sid_to_username:
@@ -1257,6 +1287,8 @@ if __name__ == "__main__":
     ensure_self_signed_certs()
 
     if os.path.exists("key.pem") and os.path.exists("cert.pem"):
+        ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_ctx.load_cert_chain(certfile="cert.pem", keyfile="key.pem")
         lan_ips = _get_lan_ips()
         print("=" * 50)
         print("  HTTPS server starting on port 5000")
@@ -1270,7 +1302,7 @@ if __name__ == "__main__":
             port=5000,
             debug=True,
             use_reloader=False,
-            ssl_context=("cert.pem", "key.pem")
+            ssl_context=ssl_ctx
         )
     else:
         print("WARNING: SSL certificate generation failed. Falling back to HTTP.")
