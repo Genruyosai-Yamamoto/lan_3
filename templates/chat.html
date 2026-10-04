@@ -1145,6 +1145,23 @@
         }
     });
 
+
+    function maybeNotifyChat(data) {
+      if (typeof Notification === 'undefined') return;
+      if (windowFocused) return;
+      if (data && data.user && userName && data.user === userName) return;
+      var title = '[Chat] ' + (data.user || 'Anonymous');
+      var body = (data.content || '');
+      if (data.type === 'audio') {
+        body = '🎤 Voice Message';
+      } else if (typeof body === 'string' && body.length > 80) {
+        body = body.substring(0, 77) + '...';
+      }
+      try {
+        new Notification(title, { body: body });
+      } catch (e) {}
+    }
+
     socket.on('disconnect', (reason) => {
         document.getElementById('chatSubtext').textContent = 'Disconnected';
         // FIX 5: Update live indicator on disconnect
@@ -1185,6 +1202,11 @@
             reply_to_content: data.reply_to_content
         });
         updateCount();
+        if (!windowFocused && (!data.user || data.user !== userName)) {
+            unreadPublic++;
+            updateTitleChat();
+            maybeNotifyChat(data);
+        }
     });
 
     // FIX 9: Removed dead new_audio handler - server uses new_message for audio
@@ -1408,7 +1430,7 @@
         socket.emit('delete_message', { message_id: id, user: userName });
     }
 
-    const COMMON_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🎉', '🔥', '👏'];
+    const COMMON_EMOJIS = ['😀','😁','😂','🤣','😊','😉','😍','😘','🤔','🤨','😐','😔','😢','😭','😠','🤪','😴','🤢','😞','👍','👎','👏','🙌','🙏','👐','✌️','❤️','🧡','💛','💚','💙','💜','💖','💔','🔥','✨','⭐','💫','💯','🎉','🎊','⚠️','🚫','✅','❌','🚀','💬','💭','👀','👇','👆','🎵','🔔','💻','💡','⚙️','😆','😌','😏','🧐','🌈','🍕','🍔','🍨','🐶','🐱','🦄','🐉','🚗','✈️','🚢','🚆','☀️','🌙','☁️','⚡','❄️','☂️'];
 
     function openEmojiPicker(event, messageId) {
         event.stopPropagation();
