@@ -8,8 +8,10 @@
     <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/emoji-picker.js') }}"></script>
     <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/call-manager.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/emoji-picker.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/call-overlay.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -970,13 +972,14 @@
                         <p id="chatSubtext2">Initializing encryption...</p>
                     </div>
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <button id="startCallBtn" class="btn" style="background-color: #28a745; color: white; display: none; padding: 0.35rem 0.75rem; font-size: 0.85rem; border: none; border-radius: 6px; align-items: center; gap: 0.25rem; cursor: pointer;">
-                            📞 Call
+                        <button id="startAudioCallBtn" class="call-btn-audio" style="display: none;" title="Start Audio Call">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                            Audio
                         </button>
-                        <button id="endCallBtn" class="btn" style="background-color: #dc3545; color: white; display: none; padding: 0.35rem 0.75rem; font-size: 0.85rem; border: none; border-radius: 6px; align-items: center; gap: 0.25rem; cursor: pointer;">
-                            🛑 End Call
+                        <button id="startVideoCallBtn" class="call-btn-video" style="display: none;" title="Start Video Call">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                            Video
                         </button>
-                        <span class="badge" id="callStatusBadge" style="display: none; background: #ffc107; color: #111; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold;">Connecting...</span>
                         <span class="badge" id="msgCount">0 messages</span>
                     </div>
                 </div>
@@ -1082,15 +1085,57 @@
 <!-- Full Emoji Picker (replaces old static emojiPopup) -->
 <div id="lan-emoji-picker-root"></div>
 
-<!-- Voice Call Elements -->
-<audio id="remoteAudio" autoplay></audio>
-<div id="incomingCallModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center;">
-    <div style="background: #2a2d32; color: #fff; padding: 2rem; border-radius: 12px; max-width: 400px; width: 90%; text-align: center; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
-        <h3 style="margin-bottom: 0.5rem; color: #fff;">📞 Incoming Call</h3>
-        <p id="incomingCallUser" style="margin-bottom: 1.5rem; font-weight: bold; font-size: 1.2rem; color: #00fa9a;"></p>
-        <div style="display: flex; gap: 1rem; justify-content: center;">
-            <button id="acceptCallBtn" class="btn" style="background-color: #28a745; color: white; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; cursor: pointer; font-weight: bold;">Accept</button>
-            <button id="declineCallBtn" class="btn" style="background-color: #dc3545; color: white; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; cursor: pointer; font-weight: bold;">Decline</button>
+<!-- Video/Audio Call Overlay -->
+<div id="callOverlay" class="call-overlay-backdrop" style="display: none;">
+    <div class="call-window">
+        <div class="call-header">
+            <div class="call-title">
+                <span id="callPartnerName">{{ partner }}</span>
+                <span id="callDuration" class="call-timer">00:00</span>
+            </div>
+            <button id="callMinimizeBtn" class="dock-btn" title="Close Overlay" style="width:32px;height:32px;font-size:0.8rem;">✕</button>
+        </div>
+        <div class="call-stage-1to1">
+            <div id="remoteVideoContainer" class="video-tile remote-tile">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div id="remoteAvatarFallback" class="video-avatar-fallback" style="display: none;">
+                    <span id="remoteInitials">?</span>
+                </div>
+                <div class="video-tile-info">
+                    <span id="remoteTileName">{{ partner }}</span>
+                    <span id="remoteMuteBadge" class="tile-badge mute-badge" style="display: none;">🔇</span>
+                    <span id="remoteHandBadge" class="tile-badge hand-badge" style="display: none;">✋</span>
+                </div>
+            </div>
+            <div id="localPipContainer" class="call-pip-container">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <div id="localAvatarFallback" class="video-avatar-fallback" style="display: none;">
+                    <span>Me</span>
+                </div>
+                <span class="pip-label">You</span>
+            </div>
+        </div>
+        <div class="call-action-dock">
+            <button id="dockMicBtn" class="dock-btn" title="Mute/Unmute Mic">🎙️</button>
+            <button id="dockCamBtn" class="dock-btn" title="Toggle Camera">📹</button>
+            <button id="dockScreenBtn" class="dock-btn" title="Share Screen">🖥️</button>
+            <button id="dockHandBtn" class="dock-btn" title="Raise Hand">✋</button>
+            <button id="dockVolBtn" class="dock-btn dock-btn-vol" title="Speaker Volume (75% / 35% / Mute)">🔊</button>
+            <button id="dockFullscreenBtn" class="dock-btn" title="Fullscreen">⛶</button>
+            <button id="dockEndCallBtn" class="dock-btn dock-btn-end" title="End Call">🛑 End Call</button>
+        </div>
+    </div>
+</div>
+
+<!-- Incoming Call Modal -->
+<div id="incomingCallModal" class="incoming-call-modal" style="display: none;">
+    <div class="incoming-call-card">
+        <h3>📞 Incoming Call</h3>
+        <div class="caller-name" id="incomingCallUser"></div>
+        <span class="call-type-badge" id="incomingCallType">Video Call</span>
+        <div class="incoming-call-actions">
+            <button id="acceptCallBtn" class="btn-accept">Accept</button>
+            <button id="declineCallBtn" class="btn-decline">Decline</button>
         </div>
     </div>
 </div>
@@ -1099,7 +1144,8 @@
 
 <script>
     // FIX 1: let instead of const so username_taken can update it
-    let userName = sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
+    const loggedInUser = "{{ user or '' }}";
+    let userName = loggedInUser || sessionStorage.getItem('fs_username') || prompt('Enter your name:', 'Anonymous') || 'Anonymous';
     sessionStorage.setItem('fs_username', userName);
     document.cookie = "username=" + encodeURIComponent(userName) + "; path=/; max-age=31536000";
 
@@ -1186,8 +1232,30 @@
         return bytes.buffer;
     }
 
+    function getStoredPrivateKey(name) {
+        return localStorage.getItem('ecdh_private_key_' + name) || (name === userName ? localStorage.getItem('ecdh_private_key') : null);
+    }
+    function getStoredPublicKey(name) {
+        return localStorage.getItem('ecdh_public_key_' + name) || (name === userName ? localStorage.getItem('ecdh_public_key') : null);
+    }
+    function setStoredKeys(name, pubJwk, privJwk) {
+        const pubStr = JSON.stringify(pubJwk);
+        const privStr = JSON.stringify(privJwk);
+        localStorage.setItem('ecdh_public_key_' + name, pubStr);
+        localStorage.setItem('ecdh_private_key_' + name, privStr);
+        localStorage.setItem('ecdh_public_key', pubStr);
+        localStorage.setItem('ecdh_private_key', privStr);
+    }
+
     async function ensureEncryptionKeys(name) {
-        if (!localStorage.getItem('ecdh_private_key') || !localStorage.getItem('ecdh_public_key')) {
+        if (!window.crypto || !window.crypto.subtle) {
+            console.warn("Web Crypto API is not available (secure context required).");
+            return;
+        }
+        let pubStr = getStoredPublicKey(name);
+        let privStr = getStoredPrivateKey(name);
+
+        if (!pubStr || !privStr) {
             try {
                 const keyPair = await window.crypto.subtle.generateKey(
                     { name: "ECDH", namedCurve: "P-256" },
@@ -1196,8 +1264,8 @@
                 );
                 const pub = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
                 const priv = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
-                localStorage.setItem('ecdh_public_key', JSON.stringify(pub));
-                localStorage.setItem('ecdh_private_key', JSON.stringify(priv));
+                setStoredKeys(name, pub, priv);
+                pubStr = JSON.stringify(pub);
             } catch (e) {
                 console.error("Failed to generate keys:", e);
                 return;
@@ -1207,7 +1275,7 @@
             await fetch('/api/save_public_key', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: name, public_key: localStorage.getItem('ecdh_public_key') })
+                body: JSON.stringify({ username: name, public_key: pubStr })
             });
         } catch (e) {
             console.error("Failed to save public key:", e);
@@ -1215,6 +1283,8 @@
     }
 
     let sharedKey = null;
+    let isInitializingEncryption = false;
+    let encryptionRetryTimer = null;
 
     async function decryptMessage(encryptedContent, key) {
         try {
@@ -1259,21 +1329,50 @@
     }
 
     async function initEncryption() {
-        await ensureEncryptionKeys(userName);
         if (!partnerName) return;
+        if (!window.crypto || !window.crypto.subtle) {
+            const subtext = document.getElementById('chatSubtext2');
+            if (subtext) subtext.textContent = "⚠️ Unencrypted (Insecure context)";
+            return;
+        }
+        if (isInitializingEncryption) return;
+        isInitializingEncryption = true;
 
         try {
+            // Ensure session sync before accessing key API
+            await fetch('/set_username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: userName })
+            }).catch(() => {});
+
+            await ensureEncryptionKeys(userName);
+
             const response = await fetch('/api/get_public_key/' + encodeURIComponent(partnerName));
             if (!response.ok) {
-                console.warn("Partner has no encryption keys registered yet.");
+                console.warn("Partner has no encryption keys registered yet. Status:", response.status);
                 const subtext = document.getElementById('chatSubtext2');
-                if (subtext) subtext.textContent = "\u26A0\uFE0F Unencrypted (Partner has no keys)";
+                if (subtext && !sharedKey) subtext.textContent = "\u26A0\uFE0F Unencrypted (Partner has no keys)";
+                if (!encryptionRetryTimer && !sharedKey) {
+                    encryptionRetryTimer = setTimeout(() => {
+                        encryptionRetryTimer = null;
+                        if (!sharedKey) initEncryption();
+                    }, 3000);
+                }
+                isInitializingEncryption = false;
                 return;
             }
             const data = await response.json();
-            const partnerPubKeyJwk = JSON.parse(data.public_key);
+            const partnerPubKeyJwk = typeof data.public_key === 'string' ? JSON.parse(data.public_key) : data.public_key;
 
-            const privKeyJwk = JSON.parse(localStorage.getItem('ecdh_private_key'));
+            const privKeyStr = getStoredPrivateKey(userName);
+            if (!privKeyStr) {
+                console.error("No private key found for user:", userName);
+                isInitializingEncryption = false;
+                return;
+            }
+            const privKeyJwk = JSON.parse(privKeyStr);
+
             const privateKey = await window.crypto.subtle.importKey(
                 "jwk",
                 privKeyJwk,
@@ -1298,13 +1397,20 @@
                 ["encrypt", "decrypt"]
             );
 
+            if (encryptionRetryTimer) {
+                clearTimeout(encryptionRetryTimer);
+                encryptionRetryTimer = null;
+            }
+
             const subtext = document.getElementById('chatSubtext2');
             if (subtext) subtext.textContent = "\uD83D\uDD12 End-to-end encrypted";
             await decryptAllMessages();
         } catch (e) {
             console.error("Encryption initialization failed:", e);
             const subtext = document.getElementById('chatSubtext2');
-            if (subtext) subtext.textContent = "\u26A0\uFE0F Encryption error";
+            if (subtext && !sharedKey) subtext.textContent = "\u26A0\uFE0F Encryption error";
+        } finally {
+            isInitializingEncryption = false;
         }
     }
 
@@ -1339,12 +1445,16 @@
             socket.emit('join_dm', { user1: userName, user2: partnerName });
         }
 
-        // Sync Flask session so edit/delete auth works server-side
+        // Sync Flask session so edit/delete auth works server-side and re-run encryption
         fetch('/set_username', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username: userName })
-        }).catch(() => {});
+        }).then(() => {
+            initEncryption();
+        }).catch(() => {
+            initEncryption();
+        });
     });
 
     // FIX 6: Handle duplicate username rejection
@@ -1361,15 +1471,28 @@
             if (partnerName) {
                 socket.emit('join_dm', { user1: userName, user2: partnerName });
             }
-            ensureEncryptionKeys(userName);
-            document.getElementById('chatSubtext').textContent = 'Connected as ' + userName;
-            initMessages();
-            // Sync Flask session with new name
             fetch('/set_username', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: userName })
+            }).then(() => {
+                initEncryption();
             }).catch(() => {});
+            document.getElementById('chatSubtext').textContent = 'Connected as ' + userName;
+            initMessages();
+        }
+    });
+
+    // Real-time key sync when partner updates key or joins DM
+    socket.on('user_key_updated', (data) => {
+        if (data && data.username === partnerName) {
+            initEncryption();
+        }
+    });
+
+    socket.on('partner_joined_dm', (data) => {
+        if (data && data.user === partnerName) {
+            initEncryption();
         }
     });
 
@@ -1414,13 +1537,23 @@
         let displayContent = data.content;
         if (data.type === 'audio') {
             displayContent = data.content;
-        } else if (data.content && data.content.startsWith('enc:') && sharedKey) {
-            displayContent = await decryptMessage(data.content, sharedKey);
+        } else if (data.content && data.content.startsWith('enc:')) {
+            if (!sharedKey) {
+                await initEncryption();
+            }
+            if (sharedKey) {
+                displayContent = await decryptMessage(data.content, sharedKey);
+            }
         }
 
         let displayReplyContent = data.reply_to_content;
-        if (displayReplyContent && displayReplyContent.startsWith('enc:') && sharedKey) {
-            displayReplyContent = await decryptMessage(displayReplyContent, sharedKey);
+        if (displayReplyContent && displayReplyContent.startsWith('enc:')) {
+            if (!sharedKey) {
+                await initEncryption();
+            }
+            if (sharedKey) {
+                displayReplyContent = await decryptMessage(displayReplyContent, sharedKey);
+            }
         }
 
         appendMessage({
@@ -1444,8 +1577,13 @@
         if (!msg) return;
         const bubble = msg.querySelector('.text-content');
         let displayContent = data.content;
-        if (data.content && data.content.startsWith('enc:') && sharedKey) {
-            displayContent = await decryptMessage(data.content, sharedKey);
+        if (data.content && data.content.startsWith('enc:')) {
+            if (!sharedKey) {
+                await initEncryption();
+            }
+            if (sharedKey) {
+                displayContent = await decryptMessage(data.content, sharedKey);
+            }
         }
         if (bubble) bubble.textContent = displayContent;
         let badge = msg.querySelector('.edited-badge');
@@ -1556,6 +1694,10 @@
         if (!partnerName) {
             showToast('Select a user to chat with first', 'error');
             return;
+        }
+
+        if (!sharedKey) {
+            await initEncryption();
         }
 
         let messageToSend = text;
@@ -1687,6 +1829,9 @@
             saved = true;
             const val = ta.value.trim();
             if (val && val !== original) {
+                if (!sharedKey && partnerName) {
+                    await initEncryption();
+                }
                 let contentToSend = val;
                 if (sharedKey) {
                     try {
@@ -2048,247 +2193,272 @@
         }, 4000);
     }
 
-    // ── WebRTC Voice Call logic ───────────────────────────
-    let peerConnection = null;
-    let localStream = null;
-    let isCalling = false;
+    // ── Video/Audio Call Integration (LanCallManager) ──────────
+    const callOverlay = document.getElementById('callOverlay');
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const remoteAvatarFallback = document.getElementById('remoteAvatarFallback');
+    const localAvatarFallback = document.getElementById('localAvatarFallback');
+    const remoteInitials = document.getElementById('remoteInitials');
+    const callDuration = document.getElementById('callDuration');
+    const callPartnerName = document.getElementById('callPartnerName');
+    const remoteTileName = document.getElementById('remoteTileName');
+    const remoteMuteBadge = document.getElementById('remoteMuteBadge');
+    const remoteHandBadge = document.getElementById('remoteHandBadge');
+    const remoteVideoContainer = document.getElementById('remoteVideoContainer');
 
-    const startCallBtn = document.getElementById('startCallBtn');
-    const endCallBtn = document.getElementById('endCallBtn');
-    const callStatusBadge = document.getElementById('callStatusBadge');
     const incomingCallModal = document.getElementById('incomingCallModal');
     const incomingCallUser = document.getElementById('incomingCallUser');
+    const incomingCallType = document.getElementById('incomingCallType');
     const acceptCallBtn = document.getElementById('acceptCallBtn');
     const declineCallBtn = document.getElementById('declineCallBtn');
-    const remoteAudio = document.getElementById('remoteAudio');
 
-    const rtcConfig = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' }
-        ]
-    };
+    const startAudioCallBtn = document.getElementById('startAudioCallBtn');
+    const startVideoCallBtn = document.getElementById('startVideoCallBtn');
 
+    const dockMicBtn = document.getElementById('dockMicBtn');
+    const dockCamBtn = document.getElementById('dockCamBtn');
+    const dockScreenBtn = document.getElementById('dockScreenBtn');
+    const dockHandBtn = document.getElementById('dockHandBtn');
+    const dockVolBtn = document.getElementById('dockVolBtn');
+    const dockFullscreenBtn = document.getElementById('dockFullscreenBtn');
+    const dockEndCallBtn = document.getElementById('dockEndCallBtn');
+    const callMinimizeBtn = document.getElementById('callMinimizeBtn');
+
+    let callTimerInterval = null;
+    let callSeconds = 0;
+    let pendingIncomingOffer = null;
+    let pendingIncomingCaller = '';
+    let pendingIncomingCallType = 'video';
+    let isMicMuted = false;
+    let isCamOff = false;
+
+    // Show call buttons when partner is selected
     if (partnerName) {
-        startCallBtn.style.display = 'inline-flex';
-        startCallBtn.addEventListener('click', startVoiceCall);
+        startAudioCallBtn.style.display = 'inline-flex';
+        startVideoCallBtn.style.display = 'inline-flex';
+        if (remoteInitials) {
+            remoteInitials.textContent = partnerName.substring(0, 2).toUpperCase();
+        }
     }
 
-    endCallBtn.addEventListener('click', endVoiceCall);
-
-    async function getLocalAudioStream() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            let errorMsg = 'Your browser does not support audio calling.';
-            if (!window.isSecureContext) {
-                errorMsg = 'Voice calls require HTTPS or localhost (Secure Context).';
-                alert(
-                    "❌ Secure Context Required for WebRTC Calls\n\n" +
-                    "To use voice calls, your browser requires a secure context (HTTPS or localhost).\n\n" +
-                    "Since you are accessing the server via HTTP, microphone permissions are blocked by the browser.\n\n" +
-                    "How to fix this:\n" +
-                    "1. Access the app via http://localhost:5000/ (if on the host machine)\n" +
-                    "2. Enable 'Insecure origins treated as secure' in your browser flags (e.g., chrome://flags/#unsafely-treat-insecure-origin-as-secure) and add your server URL\n" +
-                    "3. Run the Flask server in HTTPS mode (using certificates)"
-                );
+    const callManager = new LanCallManager({
+        socket: socket,
+        currentUser: userName,
+        onLocalStreamReady: (stream, previewStream, callType) => {
+            if (localVideo) {
+                // Pass video-only preview stream (0 audio tracks) to make self-echo physically impossible
+                localVideo.srcObject = previewStream || stream;
+                localVideo.muted = true;
+                localVideo.defaultMuted = true;
+                localVideo.volume = 0;
+                if (callType === 'audio') {
+                    localAvatarFallback.style.display = 'flex';
+                } else {
+                    localAvatarFallback.style.display = 'none';
+                }
             }
-            showToast(errorMsg, 'error');
-            throw new Error('secure context / getUserMedia missing');
+        },
+        onRemoteStreamAdded: (peerId, stream, peerUsername) => {
+            if (remoteVideo) {
+                remoteVideo.srcObject = stream;
+                remoteVideo.volume = callManager.remoteVolume || 0.75;
+                remoteAvatarFallback.style.display = 'none';
+            }
+        },
+        onRemoteStreamRemoved: () => {
+            if (remoteVideo) remoteVideo.srcObject = null;
+        },
+        onSpeakingChange: (peerId, isSpeaking) => {
+            if (peerId === 'remote' && remoteVideoContainer) {
+                remoteVideoContainer.classList.toggle('is-speaking', isSpeaking);
+            }
+        },
+        onHandChange: (peerId, raised) => {
+            if (peerId !== 'local' && remoteHandBadge) {
+                remoteHandBadge.style.display = raised ? 'inline' : 'none';
+            }
+        },
+        onCallEnded: () => {
+            hideCallOverlay();
+            showToast('Call ended.', 'info');
+        },
+        onCallStatusChange: (status) => {
+            if (status === 'Active Call') {
+                startCallTimer();
+            }
         }
+    });
+
+    // Start calls
+    startAudioCallBtn.addEventListener('click', async () => {
         try {
-            return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            showCallOverlay();
+            await callManager.startDirectCall(partnerName, 'audio');
         } catch (err) {
-            showToast('Cannot access microphone. Please check permissions.', 'error');
-            throw err;
+            console.error('Error starting audio call:', err);
+            hideCallOverlay();
+            showToast('Failed to start audio call: ' + err.message, 'error');
         }
-    }
+    });
 
-    async function createPeerConnection() {
-        peerConnection = new RTCPeerConnection(rtcConfig);
-
-        // Add local tracks to peer connection
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
-
-        // Set remote stream source
-        peerConnection.ontrack = (event) => {
-            if (event.streams && event.streams[0]) {
-                remoteAudio.srcObject = event.streams[0];
-            }
-        };
-
-        // ICE candidate handler
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate && socket && socket.connected) {
-                socket.emit('ice_candidate', {
-                    sender: userName,
-                    receiver: partnerName,
-                    candidate: event.candidate
-                });
-            }
-        };
-
-        // Handle connection state changes
-        peerConnection.onconnectionstatechange = () => {
-            console.log('RTCPeerConnection state:', peerConnection.connectionState);
-            if (peerConnection.connectionState === 'connected') {
-                callStatusBadge.textContent = 'Active Call';
-                callStatusBadge.style.background = '#28a745';
-                callStatusBadge.style.color = '#fff';
-            } else if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
-                endVoiceCall();
-            }
-        };
-    }
-
-    async function startVoiceCall() {
-        if (isCalling) return;
-        isCalling = true;
-        
-        startCallBtn.style.display = 'none';
-        endCallBtn.style.display = 'inline-flex';
-        callStatusBadge.style.display = 'inline-block';
-        callStatusBadge.textContent = 'Calling...';
-        callStatusBadge.style.background = '#ffc107';
-        callStatusBadge.style.color = '#111';
-
+    startVideoCallBtn.addEventListener('click', async () => {
         try {
-            localStream = await getLocalAudioStream();
-            await createPeerConnection();
-            
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-
-            socket.emit('call_user', {
-                sender: userName,
-                receiver: partnerName,
-                offer: offer
-            });
+            showCallOverlay();
+            await callManager.startDirectCall(partnerName, 'video');
         } catch (err) {
-            console.error('Error starting call:', err);
-            cleanupCall();
+            console.error('Error starting video call:', err);
+            hideCallOverlay();
+            showToast('Failed to start video call: ' + err.message, 'error');
         }
-    }
+    });
 
-    function endVoiceCall() {
-        if (socket && socket.connected) {
-            socket.emit('end_call', {
-                sender: userName,
-                receiver: partnerName
-            });
-        }
-        cleanupCall();
-    }
-
-    function cleanupCall() {
-        isCalling = false;
-        
-        if (peerConnection) {
-            peerConnection.close();
-            peerConnection = null;
-        }
-
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            localStream = null;
-        }
-
-        remoteAudio.srcObject = null;
-        
-        if (partnerName) {
-            startCallBtn.style.display = 'inline-flex';
-        }
-        endCallBtn.style.display = 'none';
-        callStatusBadge.style.display = 'none';
-    }
-
-    // ── Incoming Signaling Events ───────────────────────
-
-    let pendingOffer = null;
-    let callingPeer = '';
-
-    socket.on('incoming_call', async (data) => {
-        pendingOffer = data.offer;
-        callingPeer = data.sender;
-        incomingCallUser.textContent = callingPeer;
+    // Incoming call handling
+    socket.on('incoming_call', (data) => {
+        pendingIncomingOffer = data.offer;
+        pendingIncomingCaller = data.sender;
+        pendingIncomingCallType = data.call_type || 'video';
+        incomingCallUser.textContent = data.sender;
+        incomingCallType.textContent = (pendingIncomingCallType === 'video' ? 'Video' : 'Audio') + ' Call';
         incomingCallModal.style.display = 'flex';
+        callManager.audioPlayer.playRingTone();
     });
 
     acceptCallBtn.addEventListener('click', async () => {
         incomingCallModal.style.display = 'none';
-        
-        startCallBtn.style.display = 'none';
-        endCallBtn.style.display = 'inline-flex';
-        callStatusBadge.style.display = 'inline-block';
-        callStatusBadge.textContent = 'Answering...';
-        callStatusBadge.style.background = '#ffc107';
-        callStatusBadge.style.color = '#111';
-
+        callManager.audioPlayer.stopRingTone();
         try {
-            localStream = await getLocalAudioStream();
-            await createPeerConnection();
-
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-
-            socket.emit('call_response', {
-                sender: userName,
-                receiver: callingPeer,
-                answer: answer,
-                status: 'accepted'
-            });
-            
-            isCalling = true;
+            showCallOverlay();
+            await callManager.answerDirectCall(pendingIncomingCaller, pendingIncomingOffer, pendingIncomingCallType);
+            startCallTimer();
         } catch (err) {
             console.error('Error accepting call:', err);
-            socket.emit('call_response', {
-                sender: userName,
-                receiver: callingPeer,
-                status: 'failed'
-            });
-            cleanupCall();
+            hideCallOverlay();
+            showToast('Failed to accept call: ' + err.message, 'error');
         }
     });
 
     declineCallBtn.addEventListener('click', () => {
         incomingCallModal.style.display = 'none';
-        socket.emit('call_response', {
-            sender: userName,
-            receiver: callingPeer,
-            status: 'declined'
-        });
-        pendingOffer = null;
-        callingPeer = '';
+        callManager.declineDirectCall(pendingIncomingCaller);
+        pendingIncomingOffer = null;
+        pendingIncomingCaller = '';
     });
 
-    socket.on('call_answered', async (data) => {
-        if (data.status === 'accepted') {
-            callStatusBadge.textContent = 'Connecting...';
-            try {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-            } catch (err) {
-                console.error('Error setting remote description:', err);
-                endVoiceCall();
-            }
+    // Dock controls
+    dockMicBtn.addEventListener('click', () => {
+        isMicMuted = !callManager.toggleAudio();
+        dockMicBtn.classList.toggle('muted', isMicMuted);
+        dockMicBtn.textContent = isMicMuted ? '🔇' : '🎙️';
+    });
+
+    dockCamBtn.addEventListener('click', () => {
+        isCamOff = !callManager.toggleVideo();
+        dockCamBtn.classList.toggle('muted', isCamOff);
+        dockCamBtn.textContent = isCamOff ? '📷' : '📹';
+        localAvatarFallback.style.display = isCamOff ? 'flex' : 'none';
+    });
+
+    dockScreenBtn.addEventListener('click', async () => {
+        try {
+            const isSharing = await callManager.toggleScreenShare();
+            dockScreenBtn.classList.toggle('active', isSharing);
+        } catch (err) {
+            showToast('Screen share not available: ' + err.message, 'error');
+        }
+    });
+
+    dockHandBtn.addEventListener('click', () => {
+        const raised = callManager.toggleHandRaise();
+        dockHandBtn.classList.toggle('active', raised);
+    });
+
+    dockVolBtn.addEventListener('click', () => {
+        const newVol = callManager.cycleRemoteVolume();
+        if (remoteVideo) remoteVideo.volume = newVol;
+        if (newVol > 0.5) {
+            dockVolBtn.textContent = '🔊';
+            dockVolBtn.className = 'dock-btn dock-btn-vol';
+            showToast('Speaker Volume: 75% (Normal)', 'info');
+        } else if (newVol > 0.1) {
+            dockVolBtn.textContent = '🔉';
+            dockVolBtn.className = 'dock-btn dock-btn-vol vol-low';
+            showToast('Speaker Volume: 35% (Safe / Anti-Echo)', 'info');
         } else {
-            showToast(`Call was ${data.status}.`, 'info');
-            cleanupCall();
+            dockVolBtn.textContent = '🔇';
+            dockVolBtn.className = 'dock-btn dock-btn-vol vol-muted';
+            showToast('Speaker Output Muted', 'info');
         }
     });
 
-    socket.on('new_ice_candidate', async (data) => {
-        if (peerConnection) {
-            try {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-            } catch (err) {
-                console.error('Error adding ICE candidate:', err);
-            }
+    dockFullscreenBtn.addEventListener('click', () => {
+        const callWindow = document.querySelector('.call-window');
+        if (!document.fullscreenElement) {
+            callWindow.requestFullscreen().catch(() => {});
+        } else {
+            document.exitFullscreen().catch(() => {});
         }
     });
 
-    socket.on('call_ended', () => {
-        cleanupCall();
+    dockEndCallBtn.addEventListener('click', () => {
+        callManager.endDirectCall();
     });
+
+    callMinimizeBtn.addEventListener('click', () => {
+        callManager.endDirectCall();
+    });
+
+    // Helper functions
+    function showCallOverlay() {
+        callOverlay.style.display = 'flex';
+        startAudioCallBtn.style.display = 'none';
+        startVideoCallBtn.style.display = 'none';
+        callPartnerName.textContent = partnerName;
+        remoteTileName.textContent = partnerName;
+    }
+
+    function hideCallOverlay() {
+        callOverlay.style.display = 'none';
+        stopCallTimer();
+        isMicMuted = false;
+        isCamOff = false;
+        dockMicBtn.classList.remove('muted');
+        dockCamBtn.classList.remove('muted');
+        dockScreenBtn.classList.remove('active');
+        dockHandBtn.classList.remove('active');
+        dockVolBtn.className = 'dock-btn dock-btn-vol';
+        dockVolBtn.textContent = '🔊';
+        dockMicBtn.textContent = '🎙️';
+        dockCamBtn.textContent = '📹';
+        remoteAvatarFallback.style.display = 'none';
+        localAvatarFallback.style.display = 'none';
+        if (remoteVideo) remoteVideo.srcObject = null;
+        if (localVideo) localVideo.srcObject = null;
+        if (partnerName) {
+            startAudioCallBtn.style.display = 'inline-flex';
+            startVideoCallBtn.style.display = 'inline-flex';
+        }
+    }
+
+    function startCallTimer() {
+        callSeconds = 0;
+        callDuration.textContent = '00:00';
+        if (callTimerInterval) clearInterval(callTimerInterval);
+        callTimerInterval = setInterval(() => {
+            callSeconds++;
+            const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+            const secs = String(callSeconds % 60).padStart(2, '0');
+            callDuration.textContent = `${mins}:${secs}`;
+        }, 1000);
+    }
+
+    function stopCallTimer() {
+        if (callTimerInterval) {
+            clearInterval(callTimerInterval);
+            callTimerInterval = null;
+        }
+        callSeconds = 0;
+    }
 </script>
 
 </body>

@@ -1,0 +1,654 @@
+/* =============================================
+   Call Overlay — Video Call UI Components
+   Matches existing dark theme from chat.html / dm.html
+   ============================================= */
+
+/* ── Overlay Backdrop ────────────────────────── */
+.call-overlay-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 20, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: overlayFadeIn 0.25s ease-out;
+}
+
+@keyframes overlayFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ── Call Window Container ───────────────────── */
+.call-window {
+    width: 96vw;
+    height: 94vh;
+    max-width: 1400px;
+    background: #0f0f1a;
+    border-radius: 16px;
+    border: 1px solid #2d2d44;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.group-call-window {
+    max-width: 1600px;
+}
+
+/* ── Call Header ─────────────────────────────── */
+.call-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.25rem;
+    background: #1a1a2e;
+    border-bottom: 1px solid #2d2d44;
+    flex-shrink: 0;
+}
+
+.call-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #e2e8f0;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.call-timer {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.8rem;
+    color: #94a3b8;
+    background: rgba(99, 102, 241, 0.15);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+}
+
+/* ── 1:1 Call Stage ──────────────────────────── */
+.call-stage-1to1 {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #0a0a14;
+}
+
+.call-stage-1to1 .remote-tile {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+}
+
+.call-stage-1to1 .remote-tile video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #0a0a14;
+}
+
+/* ── Local PiP (Picture-in-Picture) ──────────── */
+.call-pip-container {
+    position: absolute;
+    bottom: 5.5rem;
+    right: 1.5rem;
+    width: 220px;
+    height: 165px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid #2d2d44;
+    background: #16213e;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    z-index: 10;
+    cursor: grab;
+    transition: border-color 0.2s ease;
+}
+
+.call-pip-container:hover {
+    border-color: #6366f1;
+}
+
+.call-pip-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Mirror effect for local preview */
+}
+
+.pip-label {
+    position: absolute;
+    bottom: 0.35rem;
+    left: 0.5rem;
+    font-size: 0.7rem;
+    color: #e2e8f0;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+}
+
+/* ── Video Tile (shared by 1:1 and Group) ────── */
+.video-tile {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #16213e;
+    aspect-ratio: 16 / 9;
+    transition: box-shadow 0.25s ease, transform 0.15s ease;
+}
+
+.video-tile video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* ── Speaking Glow Ring ──────────────────────── */
+.video-tile.is-speaking {
+    box-shadow: 0 0 0 3px #10b981, 0 0 20px rgba(16, 185, 129, 0.5);
+}
+
+/* ── Video Tile Info Overlay ─────────────────── */
+.video-tile-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.6rem;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
+}
+
+.video-tile-info span {
+    font-size: 0.75rem;
+    color: #e2e8f0;
+}
+
+/* ── Tile Badges ─────────────────────────────── */
+.tile-badge {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 4px;
+}
+
+.mute-badge {
+    background: rgba(239, 68, 68, 0.8);
+    color: #fff;
+}
+
+.hand-badge {
+    background: rgba(245, 158, 11, 0.85);
+    color: #fff;
+    animation: handPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes handPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}
+
+/* ── Avatar Fallback (Camera Off) ────────────── */
+.video-avatar-fallback {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1e1b4b, #312e81);
+    z-index: 2;
+}
+
+.video-avatar-fallback span {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: rgba(99, 102, 241, 0.25);
+    border: 2px solid rgba(99, 102, 241, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #c7d2fe;
+    text-transform: uppercase;
+}
+
+/* ── Group Call Grid View ────────────────────── */
+.call-grid-view {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0.75rem;
+    padding: 0.75rem;
+    overflow-y: auto;
+    align-content: center;
+}
+
+/* Smart grid sizing based on participant count */
+.call-grid-view[data-count="1"] { grid-template-columns: 1fr; }
+.call-grid-view[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
+.call-grid-view[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
+.call-grid-view[data-count="4"] { grid-template-columns: repeat(2, 1fr); }
+.call-grid-view[data-count="5"],
+.call-grid-view[data-count="6"] { grid-template-columns: repeat(3, 1fr); }
+.call-grid-view[data-count="7"],
+.call-grid-view[data-count="8"] { grid-template-columns: repeat(4, 1fr); }
+
+/* ── Group Call Spotlight View ───────────────── */
+.call-spotlight-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0.75rem;
+    gap: 0.75rem;
+}
+
+.spotlight-main {
+    flex: 1;
+    min-height: 0;
+}
+
+.spotlight-main .video-tile {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: unset;
+}
+
+.spotlight-strip {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    flex-shrink: 0;
+    padding-bottom: 0.25rem;
+}
+
+.spotlight-strip .video-tile {
+    width: 160px;
+    height: 90px;
+    flex-shrink: 0;
+    aspect-ratio: unset;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+}
+
+.spotlight-strip .video-tile:hover {
+    border-color: #6366f1;
+}
+
+.spotlight-strip .video-tile.active-speaker {
+    border-color: #10b981;
+}
+
+/* ── Floating Action Dock ────────────────────── */
+.call-action-dock {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: #1a1a2e;
+    border-top: 1px solid #2d2d44;
+    flex-shrink: 0;
+}
+
+.dock-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 1px solid #2d2d44;
+    background: #16213e;
+    color: #e2e8f0;
+    font-size: 1.15rem;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.dock-btn:hover {
+    background: #1e293b;
+    border-color: #475569;
+    transform: scale(1.08);
+}
+
+.dock-btn:active {
+    transform: scale(0.95);
+}
+
+.dock-btn.active {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: #6366f1;
+    box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+}
+
+.dock-btn.muted {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+}
+
+.dock-btn-vol.vol-low {
+    background: rgba(245, 158, 11, 0.2);
+    border-color: #f59e0b;
+    color: #f59e0b;
+}
+
+.dock-btn-vol.vol-muted {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+.dock-btn-end {
+    background: rgba(239, 68, 68, 0.15) !important;
+    border-color: #ef4444 !important;
+    color: #ef4444;
+    width: auto;
+    border-radius: 24px;
+    padding: 0 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.dock-btn-end:hover {
+    background: rgba(239, 68, 68, 0.3) !important;
+    color: #fca5a5;
+}
+
+/* ── Huddle Banner (Team Chat) ───────────────── */
+.huddle-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(90deg, #1e1b4b, #312e81);
+    border: 1px solid #4338ca;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    margin: 0.5rem 0.75rem 0;
+    animation: bannerSlideIn 0.3s ease-out;
+}
+
+@keyframes bannerSlideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.huddle-banner-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #c7d2fe;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.huddle-banner .live-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    display: inline-block;
+    animation: livePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+
+.huddle-banner .btn-sm {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid #6366f1;
+    background: rgba(99, 102, 241, 0.2);
+    color: #c7d2fe;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s, color 0.2s;
+}
+
+.huddle-banner .btn-sm:hover {
+    background: rgba(99, 102, 241, 0.4);
+    color: #e0e7ff;
+}
+
+.huddle-banner .btn-success {
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+}
+
+.huddle-banner .btn-success:hover {
+    background: rgba(16, 185, 129, 0.35);
+    color: #a7f3d0;
+}
+
+/* ── Header Call Buttons ─────────────────────── */
+.call-btn-audio,
+.call-btn-video {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.call-btn-audio {
+    background: #10b981;
+    color: #fff;
+}
+.call-btn-audio:hover {
+    background: #059669;
+    transform: scale(1.03);
+}
+
+.call-btn-video {
+    background: #6366f1;
+    color: #fff;
+}
+.call-btn-video:hover {
+    background: #4f46e5;
+    transform: scale(1.03);
+}
+
+.call-btn-huddle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: 1px solid #4338ca;
+    border-radius: 6px;
+    background: rgba(99, 102, 241, 0.15);
+    color: #a5b4fc;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.call-btn-huddle:hover {
+    background: rgba(99, 102, 241, 0.3);
+}
+
+/* ── Incoming Call Modal ─────────────────────── */
+.incoming-call-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: overlayFadeIn 0.2s ease-out;
+}
+
+.incoming-call-card {
+    background: #1a1a2e;
+    border: 1px solid #2d2d44;
+    border-radius: 16px;
+    padding: 2rem 2.5rem;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: incomingPulse 2s ease-in-out infinite;
+    max-width: 340px;
+}
+
+@keyframes incomingPulse {
+    0%, 100% { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+    50% { box-shadow: 0 20px 60px rgba(99, 102, 241, 0.25), 0 0 0 3px rgba(99, 102, 241, 0.15); }
+}
+
+.incoming-call-card h3 {
+    margin-bottom: 0.35rem;
+    color: #e2e8f0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.incoming-call-card .caller-name {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #10b981;
+    margin-bottom: 0.25rem;
+}
+
+.incoming-call-card .call-type-badge {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-bottom: 1.5rem;
+    display: block;
+}
+
+.incoming-call-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.incoming-call-actions .btn-accept {
+    background: #10b981;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.6rem 1.5rem;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.9rem;
+    transition: background 0.2s, transform 0.1s;
+}
+.incoming-call-actions .btn-accept:hover {
+    background: #059669;
+    transform: scale(1.04);
+}
+
+.incoming-call-actions .btn-decline {
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.6rem 1.5rem;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.9rem;
+    transition: background 0.2s, transform 0.1s;
+}
+.incoming-call-actions .btn-decline:hover {
+    background: #dc2626;
+    transform: scale(1.04);
+}
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 768px) {
+    .call-window {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        border: none;
+    }
+
+    .call-pip-container {
+        width: 120px;
+        height: 90px;
+        bottom: 5rem;
+        right: 0.75rem;
+    }
+
+    .call-grid-view {
+        grid-template-columns: 1fr !important;
+        gap: 0.5rem;
+        padding: 0.5rem;
+    }
+
+    .call-grid-view[data-count="2"] { grid-template-columns: 1fr !important; }
+
+    .dock-btn {
+        width: 42px;
+        height: 42px;
+        font-size: 1rem;
+    }
+
+    .dock-btn-end {
+        padding: 0 0.85rem;
+        font-size: 0.8rem;
+    }
+
+    .call-action-dock {
+        gap: 0.35rem;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .spotlight-strip .video-tile {
+        width: 100px;
+        height: 56px;
+    }
+
+    .incoming-call-card {
+        margin: 1rem;
+        padding: 1.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .call-header {
+        padding: 0.5rem 0.75rem;
+    }
+
+    .call-title {
+        font-size: 0.85rem;
+    }
+
+    .dock-btn {
+        width: 38px;
+        height: 38px;
+        font-size: 0.9rem;
+    }
+}
+
+/* ── Fullscreen overrides ────────────────────── */
+.call-window:fullscreen,
+.call-window:-webkit-full-screen {
+    border-radius: 0;
+    border: none;
+    max-width: none;
+    width: 100vw;
+    height: 100vh;
+}

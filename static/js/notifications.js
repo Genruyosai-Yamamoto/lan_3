@@ -148,6 +148,8 @@
                 preview = '🎤 Voice Message';
             } else if (messageType === 'file') {
                 preview = '📁 Attachment';
+            } else if (typeof preview === 'string' && preview.startsWith('enc:')) {
+                preview = '🔒 Encrypted message';
             }
 
             const channelTag = type === 'dm' ? `🔒 DM from ${sender}` : `💬 Public Chat: ${sender}`;

@@ -32,6 +32,7 @@ from data import db, Message, Reaction, PrivateMessage, Conversation, UserKey, P
 from workers import upload_worker, get_dm_room, cleanup_offline_users, now_iso
 from utils import log_activity
 from datetime import datetime, timezone, UTC
+from urllib.parse import unquote
 import time
 from werkzeug.utils import secure_filename
 
@@ -44,7 +45,8 @@ socketio = SocketIO(
     cors_allowed_origins="*",
     ping_timeout=60,
     ping_interval=25,
-    async_mode="gevent"
+    async_mode="gevent",
+    manage_session=False
 )
 
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///chat.db"
@@ -73,6 +75,7 @@ upload_registry = {}
 upload_queue = queue.Queue()
 
 watch_parties = {} 
+active_group_calls = {}  # room -> { sid: {"username": username, "hand_raised": bool} } 
 
 # =========================
 # HELPERS
@@ -103,6 +106,18 @@ worker_thread = threading.Thread(
     daemon=True
 )
 worker_thread.start()
+
+
+# =========================
+# BEFORE REQUEST
+# =========================
+
+@app.before_request
+def sync_session_username():
+    if not session.get("username"):
+        cookie_user = request.cookies.get("username")
+        if cookie_user:
+            session["username"] = unquote(cookie_user)
 
 
 # =========================
@@ -199,6 +214,20 @@ def handle_connect(auth=None):
 def handle_disconnect():
     sid = request.sid
     username = sid_to_username.pop(sid, None)
+
+    for r in list(active_group_calls.keys()):
+        if sid in active_group_calls[r]:
+            u = active_group_calls[r][sid]["username"]
+            del active_group_calls[r][sid]
+            emit("group_call_user_left", {"sid": sid, "username": u}, room=f"group_call_{r}")
+            cnt = len(active_group_calls[r])
+            if cnt == 0:
+                del active_group_calls[r]
+            emit("group_call_status", {
+                "room": r,
+                "count": cnt,
+                "participants": [info["username"] for info in active_group_calls.get(r, {}).values()]
+            }, broadcast=True)
 
     if username and username in online_users and online_users[username].get("sid") == sid:
         socketio.start_background_task(_delayed_disconnect, username, sid)
@@ -542,7 +571,16 @@ def save_public_key():
         return {"error": "Missing username or public_key"}, 400
 
     session_username = session.get("username")
-    if not session_username or session_username != username:
+    if not session_username:
+        cookie_user = request.cookies.get("username")
+        if cookie_user:
+            session_username = unquote(cookie_user)
+            session["username"] = session_username
+
+    if not session_username:
+        session["username"] = username
+        session_username = username
+    elif session_username != username:
         return {"error": "Unauthorized to save key for another user"}, 403
 
     user_key = UserKey.query.filter_by(username=username).first()
@@ -552,12 +590,19 @@ def save_public_key():
     else:
         user_key.public_key = public_key
     db.session.commit()
+    socketio.emit("user_key_updated", {"username": username})
     return {"success": True}
 
 
 @app.route("/api/get_public_key/<username>")
 def get_public_key(username):
-    if not session.get("username"):
+    session_username = session.get("username")
+    if not session_username:
+        cookie_user = request.cookies.get("username")
+        if cookie_user:
+            session_username = unquote(cookie_user)
+            session["username"] = session_username
+    if not session_username:
         return {"error": "Authentication required"}, 401
     user_key = UserKey.query.filter_by(username=username).first()
     if not user_key:
@@ -689,6 +734,7 @@ def join_dm(data):
     room = get_dm_room(data["user1"], data["user2"])
     join_room(room)
     print(f"DEBUG JOIN_DM: joined room {room}", flush=True)
+    emit("partner_joined_dm", {"user": username}, room=room, include_self=False)
 
 
 @socketio.on("send_private_message")
@@ -1129,7 +1175,7 @@ def handle_get_watch_parties():
 
 
 # =========================
-# WEBRTC SIGNALLING FOR VOICE CALLS
+# WEBRTC SIGNALLING FOR CALLS
 # =========================
 
 @socketio.on("call_user")
@@ -1140,6 +1186,7 @@ def handle_call_user(data):
     room = get_dm_room(data["sender"], data["receiver"])
     emit("incoming_call", {
         "sender": data["sender"],
+        "call_type": data.get("call_type", "video"),
         "offer": data["offer"]
     }, room=room, include_self=False)
 
@@ -1178,6 +1225,89 @@ def handle_end_call(data):
     emit("call_ended", {
         "sender": data["sender"]
     }, room=room, include_self=False)
+
+
+@socketio.on("group_call_join")
+def handle_group_call_join(data):
+    room = data.get("room", "team_chat")
+    username = sid_to_username.get(request.sid) or session.get("username") or data.get("username", "Anonymous")
+    sid_to_username[request.sid] = username
+
+    if room not in active_group_calls:
+        active_group_calls[room] = {}
+
+    existing_peers = [
+        {"sid": s, "username": info["username"], "hand_raised": info.get("hand_raised", False)}
+        for s, info in active_group_calls[room].items()
+        if s != request.sid
+    ]
+
+    active_group_calls[room][request.sid] = {"username": username, "hand_raised": False}
+    join_room(f"group_call_{room}")
+
+    emit("group_call_peers_list", {"peers": existing_peers})
+    emit("group_call_user_joined", {
+        "sid": request.sid,
+        "username": username,
+        "hand_raised": False
+    }, room=f"group_call_{room}", include_self=False)
+
+    emit("group_call_status", {
+        "room": room,
+        "count": len(active_group_calls[room]),
+        "participants": [info["username"] for info in active_group_calls[room].values()]
+    }, broadcast=True)
+
+
+@socketio.on("group_call_signal")
+def handle_group_call_signal(data):
+    target_sid = data.get("target_sid")
+    username = sid_to_username.get(request.sid) or session.get("username", "Anonymous")
+    if not target_sid:
+        return
+    emit("group_call_signal", {
+        "sender_sid": request.sid,
+        "username": username,
+        "signal_type": data.get("signal_type"),
+        "data": data.get("data")
+    }, room=target_sid)
+
+
+@socketio.on("group_call_leave")
+def handle_group_call_leave(data):
+    room = data.get("room", "team_chat")
+    username = sid_to_username.get(request.sid) or session.get("username", "Anonymous")
+    if room in active_group_calls and request.sid in active_group_calls[room]:
+        del active_group_calls[room][request.sid]
+        emit("group_call_user_left", {
+            "sid": request.sid,
+            "username": username
+        }, room=f"group_call_{room}", include_self=False)
+
+        count = len(active_group_calls[room])
+        if count == 0:
+            del active_group_calls[room]
+
+        emit("group_call_status", {
+            "room": room,
+            "count": count,
+            "participants": [info["username"] for info in active_group_calls.get(room, {}).values()]
+        }, broadcast=True)
+
+
+@socketio.on("group_call_hand")
+def handle_group_call_hand(data):
+    room = data.get("room", "team_chat")
+    username = sid_to_username.get(request.sid) or session.get("username", "Anonymous")
+    raised = bool(data.get("raised", False))
+    if room in active_group_calls and request.sid in active_group_calls[room]:
+        active_group_calls[room][request.sid]["hand_raised"] = raised
+        emit("group_call_hand_updated", {
+            "sid": request.sid,
+            "username": username,
+            "raised": raised
+        }, room=f"group_call_{room}")
+
 
 
 def _get_lan_ips():

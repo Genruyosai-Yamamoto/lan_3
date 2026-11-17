@@ -11,3 +11,6 @@ venv
 /instance/*
 /uploads/*
 .worktrees
+.superpowers/*
+.pytest_cache/*
+docs/*

@@ -576,25 +576,40 @@
 
     // E2EE Key Registration
     async function ensureEncryptionKeys(name) {
-        if (!localStorage.getItem('ecdh_private_key') || !localStorage.getItem('ecdh_public_key')) {
+        if (!window.crypto || !window.crypto.subtle) return;
+        const privKeyName = 'ecdh_private_key_' + name;
+        const pubKeyName = 'ecdh_public_key_' + name;
+        let priv = localStorage.getItem(privKeyName) || (name === userName ? localStorage.getItem('ecdh_private_key') : null);
+        let pub = localStorage.getItem(pubKeyName) || (name === userName ? localStorage.getItem('ecdh_public_key') : null);
+
+        if (!priv || !pub) {
             try {
                 const keyPair = await window.crypto.subtle.generateKey(
                     { name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"]
                 );
-                const pub = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
-                const priv = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
-                localStorage.setItem('ecdh_public_key', JSON.stringify(pub));
-                localStorage.setItem('ecdh_private_key', JSON.stringify(priv));
+                const pubJwk = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+                const privJwk = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
+                pub = JSON.stringify(pubJwk);
+                priv = JSON.stringify(privJwk);
+                localStorage.setItem(pubKeyName, pub);
+                localStorage.setItem(privKeyName, priv);
+                localStorage.setItem('ecdh_public_key', pub);
+                localStorage.setItem('ecdh_private_key', priv);
             } catch (e) {
                 console.error("Failed to generate keys:", e);
                 return;
             }
         }
         try {
+            await fetch('/set_username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: name })
+            }).catch(() => {});
             await fetch('/api/save_public_key', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: name, public_key: localStorage.getItem('ecdh_public_key') })
+                body: JSON.stringify({ username: name, public_key: pub })
             });
         } catch (e) {
             console.error("Failed to save public key:", e);

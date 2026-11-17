@@ -8,8 +8,10 @@
     <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/emoji-picker.js') }}"></script>
     <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/call-manager.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/emoji-picker.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/notifications.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/call-overlay.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -915,7 +917,58 @@
                 <span class="live-pulse"></span>
                 <span id="liveText">Live</span>
             </div>
+            <button id="startHuddleBtn" class="call-btn-huddle" title="Start or Join Team Huddle">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                Huddle
+            </button>
         </header>
+
+        <!-- Huddle Banner -->
+        <div id="huddleBanner" class="huddle-banner" style="display: none;">
+            <div class="huddle-banner-info">
+                <span class="live-pulse"></span>
+                <span id="huddleBannerText">Team Huddle in progress</span>
+            </div>
+            <button id="joinHuddleBtn" class="btn-sm btn-success">Join Huddle</button>
+        </div>
+
+        <!-- Group Call Overlay -->
+        <div id="groupCallOverlay" class="call-overlay-backdrop" style="display: none;">
+            <div class="call-window group-call-window">
+                <div class="call-header">
+                    <div class="call-title">
+                        <span>Team Huddle</span>
+                        <span id="groupCallTimer" class="call-timer">00:00</span>
+                        <span id="groupParticipantCount" class="badge" style="background:rgba(99,102,241,0.2);color:#a5b4fc;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.75rem;">0</span>
+                    </div>
+                    <div style="display:flex;gap:0.5rem;align-items:center;">
+                        <button id="groupLayoutToggleBtn" class="dock-btn" style="width:auto;border-radius:8px;padding:0 0.75rem;font-size:0.75rem;" title="Toggle Grid / Spotlight">🔲 Grid</button>
+                        <button id="groupMinimizeBtn" class="dock-btn" style="width:32px;height:32px;font-size:0.8rem;" title="Close overlay">✕</button>
+                    </div>
+                </div>
+                <div id="groupVideoStage" class="call-grid-view" data-count="0">
+                    <!-- Local tile always present -->
+                    <div id="localGroupTile" class="video-tile">
+                        <video id="groupLocalVideo" autoplay playsinline muted></video>
+                        <div id="groupLocalAvatarFallback" class="video-avatar-fallback" style="display: none;">
+                            <span>Me</span>
+                        </div>
+                        <div class="video-tile-info">
+                            <span>You</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="call-action-dock">
+                    <button id="groupMicBtn" class="dock-btn" title="Mute/Unmute Mic">🎙️</button>
+                    <button id="groupCamBtn" class="dock-btn" title="Toggle Camera">📹</button>
+                    <button id="groupScreenBtn" class="dock-btn" title="Share Screen">🖥️</button>
+                    <button id="groupHandBtn" class="dock-btn" title="Raise Hand">✋</button>
+                    <button id="groupVolBtn" class="dock-btn dock-btn-vol" title="Speaker Volume (75% / 35% / Mute)">🔊</button>
+                    <button id="groupFullscreenBtn" class="dock-btn" title="Fullscreen">⛶</button>
+                    <button id="groupLeaveBtn" class="dock-btn dock-btn-end" title="Leave Huddle">🚪 Leave</button>
+                </div>
+            </div>
+        </div>
 
         <div class="chat-container">
             <div class="chat-card">
@@ -1065,27 +1118,42 @@
 
     // E2EE Key Registration
     async function ensureEncryptionKeys(name) {
-        if (!localStorage.getItem('ecdh_private_key') || !localStorage.getItem('ecdh_public_key')) {
+        if (!window.crypto || !window.crypto.subtle) return;
+        const privKeyName = 'ecdh_private_key_' + name;
+        const pubKeyName = 'ecdh_public_key_' + name;
+        let priv = localStorage.getItem(privKeyName) || (name === userName ? localStorage.getItem('ecdh_private_key') : null);
+        let pub = localStorage.getItem(pubKeyName) || (name === userName ? localStorage.getItem('ecdh_public_key') : null);
+
+        if (!priv || !pub) {
             try {
                 const keyPair = await window.crypto.subtle.generateKey(
                     { name: "ECDH", namedCurve: "P-256" },
                     true,
                     ["deriveKey", "deriveBits"]
                 );
-                const pub = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
-                const priv = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
-                localStorage.setItem('ecdh_public_key', JSON.stringify(pub));
-                localStorage.setItem('ecdh_private_key', JSON.stringify(priv));
+                const pubJwk = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+                const privJwk = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
+                pub = JSON.stringify(pubJwk);
+                priv = JSON.stringify(privJwk);
+                localStorage.setItem(pubKeyName, pub);
+                localStorage.setItem(privKeyName, priv);
+                localStorage.setItem('ecdh_public_key', pub);
+                localStorage.setItem('ecdh_private_key', priv);
             } catch (e) {
                 console.error("Failed to generate keys:", e);
                 return;
             }
         }
         try {
+            await fetch('/set_username', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: name })
+            }).catch(() => {});
             await fetch('/api/save_public_key', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: name, public_key: localStorage.getItem('ecdh_public_key') })
+                body: JSON.stringify({ username: name, public_key: pub })
             });
         } catch (e) {
             console.error("Failed to save public key:", e);
@@ -1643,6 +1711,359 @@
             toast.style.transition = 'all 0.3s ease';
             setTimeout(() => toast.remove(), 300);
         }, 4000);
+    }
+
+    // ── Team Huddle Integration (LanCallManager) ─────────────
+    const groupCallOverlay = document.getElementById('groupCallOverlay');
+    const groupVideoStage = document.getElementById('groupVideoStage');
+    const groupLocalVideo = document.getElementById('groupLocalVideo');
+    const groupLocalAvatarFallback = document.getElementById('groupLocalAvatarFallback');
+    const groupCallTimer = document.getElementById('groupCallTimer');
+    const groupParticipantCount = document.getElementById('groupParticipantCount');
+    const huddleBanner = document.getElementById('huddleBanner');
+    const huddleBannerText = document.getElementById('huddleBannerText');
+    const joinHuddleBtn = document.getElementById('joinHuddleBtn');
+    const startHuddleBtn = document.getElementById('startHuddleBtn');
+    const groupLayoutToggleBtn = document.getElementById('groupLayoutToggleBtn');
+    const groupMinimizeBtn = document.getElementById('groupMinimizeBtn');
+    const groupMicBtn = document.getElementById('groupMicBtn');
+    const groupCamBtn = document.getElementById('groupCamBtn');
+    const groupScreenBtn = document.getElementById('groupScreenBtn');
+    const groupHandBtn = document.getElementById('groupHandBtn');
+    const groupVolBtn = document.getElementById('groupVolBtn');
+    const groupFullscreenBtn = document.getElementById('groupFullscreenBtn');
+    const groupLeaveBtn = document.getElementById('groupLeaveBtn');
+    const localGroupTile = document.getElementById('localGroupTile');
+
+    let groupTimerInterval = null;
+    let groupCallSeconds = 0;
+    let isInHuddle = false;
+    let isGridView = true;
+    let groupMicMuted = false;
+    let groupCamOff = false;
+
+    const groupCallManager = new LanCallManager({
+        socket: socket,
+        currentUser: userName,
+        onLocalStreamReady: (stream, previewStream, callType) => {
+            if (groupLocalVideo) {
+                // Pass video-only preview stream (0 audio tracks) to make self-echo physically impossible
+                groupLocalVideo.srcObject = previewStream || stream;
+                groupLocalVideo.muted = true;
+                groupLocalVideo.defaultMuted = true;
+                groupLocalVideo.volume = 0;
+                groupLocalAvatarFallback.style.display = callType === 'audio' ? 'flex' : 'none';
+            }
+        },
+        onRemoteStreamAdded: (peerId, stream, peerUsername) => {
+            addGroupVideoTile(peerId, stream, peerUsername);
+            updateGridCount();
+        },
+        onRemoteStreamRemoved: (peerId) => {
+            removeGroupVideoTile(peerId);
+            updateGridCount();
+        },
+        onSpeakingChange: (peerId, isSpeaking) => {
+            const tileId = peerId === 'local' ? 'localGroupTile' : `group-tile-${peerId}`;
+            const tile = document.getElementById(tileId);
+            if (tile) tile.classList.toggle('is-speaking', isSpeaking);
+        },
+        onHandChange: (peerId, raised) => {
+            const tileId = peerId === 'local' ? 'localGroupTile' : `group-tile-${peerId}`;
+            const badge = document.querySelector(`#${tileId} .hand-badge`);
+            if (badge) badge.style.display = raised ? 'inline' : 'none';
+        },
+        onCallEnded: () => {
+            hideGroupCallOverlay();
+            showToast('Left the huddle.', 'info');
+        },
+        onCallStatusChange: (status) => {
+            // no-op for group
+        }
+    });
+
+    // Listen for group call status broadcasts from server
+    socket.on('group_call_status', (data) => {
+        if (data.room !== 'team_chat') return;
+        const count = data.count || 0;
+        const participants = data.participants || [];
+
+        if (count > 0 && !isInHuddle) {
+            huddleBanner.style.display = 'flex';
+            huddleBannerText.textContent = `Team Huddle in progress · ${count} participant${count !== 1 ? 's' : ''} · ${participants.join(', ')}`;
+            startHuddleBtn.textContent = '🟢 Join';
+        } else if (count === 0 && !isInHuddle) {
+            huddleBanner.style.display = 'none';
+            startHuddleBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg> Huddle';
+        }
+
+        // Update participant count badge inside the overlay if visible
+        if (isInHuddle && groupParticipantCount) {
+            groupParticipantCount.textContent = `${count} participant${count !== 1 ? 's' : ''}`;
+        }
+    });
+
+    // Start / Join huddle
+    async function joinHuddle() {
+        if (isInHuddle) return;
+        try {
+            isInHuddle = true;
+            showGroupCallOverlay();
+            await groupCallManager.joinGroupCall('team_chat', 'video');
+            startGroupTimer();
+        } catch (err) {
+            console.error('Error joining huddle:', err);
+            isInHuddle = false;
+            hideGroupCallOverlay();
+            showToast('Failed to join huddle: ' + err.message, 'error');
+        }
+    }
+
+    startHuddleBtn.addEventListener('click', joinHuddle);
+    joinHuddleBtn.addEventListener('click', joinHuddle);
+
+    // Dock controls
+    groupMicBtn.addEventListener('click', () => {
+        groupMicMuted = !groupCallManager.toggleAudio();
+        groupMicBtn.classList.toggle('muted', groupMicMuted);
+        groupMicBtn.textContent = groupMicMuted ? '🔇' : '🎙️';
+    });
+
+    groupCamBtn.addEventListener('click', () => {
+        groupCamOff = !groupCallManager.toggleVideo();
+        groupCamBtn.classList.toggle('muted', groupCamOff);
+        groupCamBtn.textContent = groupCamOff ? '📷' : '📹';
+        groupLocalAvatarFallback.style.display = groupCamOff ? 'flex' : 'none';
+    });
+
+    groupScreenBtn.addEventListener('click', async () => {
+        try {
+            const isSharing = await groupCallManager.toggleScreenShare();
+            groupScreenBtn.classList.toggle('active', isSharing);
+        } catch (err) {
+            showToast('Screen share not available: ' + err.message, 'error');
+        }
+    });
+
+    groupHandBtn.addEventListener('click', () => {
+        const raised = groupCallManager.toggleHandRaise();
+        groupHandBtn.classList.toggle('active', raised);
+    });
+
+    groupVolBtn.addEventListener('click', () => {
+        const newVol = groupCallManager.cycleRemoteVolume();
+        groupVideoStage.querySelectorAll('.video-tile:not(#localGroupTile) video').forEach(v => {
+            v.volume = newVol;
+        });
+        if (newVol > 0.5) {
+            groupVolBtn.textContent = '🔊';
+            groupVolBtn.className = 'dock-btn dock-btn-vol';
+            showToast('Huddle Volume: 75% (Normal)', 'info');
+        } else if (newVol > 0.1) {
+            groupVolBtn.textContent = '🔉';
+            groupVolBtn.className = 'dock-btn dock-btn-vol vol-low';
+            showToast('Huddle Volume: 35% (Safe / Anti-Echo)', 'info');
+        } else {
+            groupVolBtn.textContent = '🔇';
+            groupVolBtn.className = 'dock-btn dock-btn-vol vol-muted';
+            showToast('Huddle Output Muted', 'info');
+        }
+    });
+
+    groupFullscreenBtn.addEventListener('click', () => {
+        const callWindow = groupCallOverlay.querySelector('.call-window');
+        if (!document.fullscreenElement) {
+            callWindow.requestFullscreen().catch(() => {});
+        } else {
+            document.exitFullscreen().catch(() => {});
+        }
+    });
+
+    groupLeaveBtn.addEventListener('click', () => {
+        groupCallManager.leaveGroupCall();
+        isInHuddle = false;
+    });
+
+    groupMinimizeBtn.addEventListener('click', () => {
+        groupCallManager.leaveGroupCall();
+        isInHuddle = false;
+    });
+
+    // Layout toggle
+    groupLayoutToggleBtn.addEventListener('click', () => {
+        isGridView = !isGridView;
+        if (isGridView) {
+            groupVideoStage.className = 'call-grid-view';
+            groupLayoutToggleBtn.textContent = '🔲 Grid';
+            // Remove spotlight wrapper if it exists
+            const spotMain = groupVideoStage.querySelector('.spotlight-main');
+            const spotStrip = groupVideoStage.querySelector('.spotlight-strip');
+            if (spotMain || spotStrip) {
+                // Move all tiles back to stage directly
+                const allTiles = groupVideoStage.querySelectorAll('.video-tile');
+                allTiles.forEach(t => groupVideoStage.appendChild(t));
+                if (spotMain) spotMain.remove();
+                if (spotStrip) spotStrip.remove();
+            }
+        } else {
+            groupVideoStage.className = 'call-spotlight-view';
+            groupLayoutToggleBtn.textContent = '👤 Spotlight';
+            rebuildSpotlightView();
+        }
+        updateGridCount();
+    });
+
+    function rebuildSpotlightView() {
+        const tiles = Array.from(groupVideoStage.querySelectorAll('.video-tile'));
+        if (tiles.length === 0) return;
+
+        // Clear stage
+        groupVideoStage.innerHTML = '';
+
+        // First tile (or the one speaking) goes to main
+        const mainDiv = document.createElement('div');
+        mainDiv.className = 'spotlight-main';
+        mainDiv.appendChild(tiles[0]);
+        groupVideoStage.appendChild(mainDiv);
+
+        // Rest go to strip
+        if (tiles.length > 1) {
+            const stripDiv = document.createElement('div');
+            stripDiv.className = 'spotlight-strip';
+            for (let i = 1; i < tiles.length; i++) {
+                stripDiv.appendChild(tiles[i]);
+            }
+            groupVideoStage.appendChild(stripDiv);
+        }
+    }
+
+    // Dynamic tile management
+    function addGroupVideoTile(peerId, stream, username) {
+        const existingTile = document.getElementById(`group-tile-${peerId}`);
+        if (existingTile) {
+            const vid = existingTile.querySelector('video');
+            if (vid) vid.srcObject = stream;
+            return;
+        }
+
+        const tile = document.createElement('div');
+        tile.className = 'video-tile';
+        tile.id = `group-tile-${peerId}`;
+
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsInline = true;
+        video.volume = groupCallManager.remoteVolume || 0.75;
+        video.srcObject = stream;
+        tile.appendChild(video);
+
+        const avatarFallback = document.createElement('div');
+        avatarFallback.className = 'video-avatar-fallback';
+        avatarFallback.style.display = 'none';
+        const initials = document.createElement('span');
+        initials.textContent = (username || '?').substring(0, 2).toUpperCase();
+        avatarFallback.appendChild(initials);
+        tile.appendChild(avatarFallback);
+
+        const infoBar = document.createElement('div');
+        infoBar.className = 'video-tile-info';
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = username || 'Peer';
+        infoBar.appendChild(nameSpan);
+
+        const muteBadge = document.createElement('span');
+        muteBadge.className = 'tile-badge mute-badge';
+        muteBadge.style.display = 'none';
+        muteBadge.textContent = '🔇';
+        infoBar.appendChild(muteBadge);
+
+        const handBadge = document.createElement('span');
+        handBadge.className = 'tile-badge hand-badge';
+        handBadge.style.display = 'none';
+        handBadge.textContent = '✋';
+        infoBar.appendChild(handBadge);
+
+        tile.appendChild(infoBar);
+
+        if (isGridView) {
+            groupVideoStage.appendChild(tile);
+        } else {
+            let strip = groupVideoStage.querySelector('.spotlight-strip');
+            if (!strip) {
+                strip = document.createElement('div');
+                strip.className = 'spotlight-strip';
+                groupVideoStage.appendChild(strip);
+            }
+            strip.appendChild(tile);
+        }
+    }
+
+    function removeGroupVideoTile(peerId) {
+        const tile = document.getElementById(`group-tile-${peerId}`);
+        if (tile) tile.remove();
+    }
+
+    function updateGridCount() {
+        const count = groupVideoStage.querySelectorAll('.video-tile').length;
+        groupVideoStage.setAttribute('data-count', count);
+    }
+
+    function showGroupCallOverlay() {
+        groupCallOverlay.style.display = 'flex';
+        huddleBanner.style.display = 'none';
+    }
+
+    function hideGroupCallOverlay() {
+        groupCallOverlay.style.display = 'none';
+        stopGroupTimer();
+        isInHuddle = false;
+        groupMicMuted = false;
+        groupCamOff = false;
+        groupMicBtn.classList.remove('muted');
+        groupCamBtn.classList.remove('muted');
+        groupScreenBtn.classList.remove('active');
+        groupHandBtn.classList.remove('active');
+        groupVolBtn.className = 'dock-btn dock-btn-vol';
+        groupVolBtn.textContent = '🔊';
+        groupMicBtn.textContent = '🎙️';
+        groupCamBtn.textContent = '📹';
+        groupLocalAvatarFallback.style.display = 'none';
+        if (groupLocalVideo) groupLocalVideo.srcObject = null;
+
+        // Remove all remote tiles, keep only the local tile
+        const remoteTiles = groupVideoStage.querySelectorAll('.video-tile:not(#localGroupTile)');
+        remoteTiles.forEach(t => t.remove());
+
+        // Reset to grid view
+        isGridView = true;
+        groupVideoStage.className = 'call-grid-view';
+        groupLayoutToggleBtn.textContent = '🔲 Grid';
+
+        // Re-add local tile if missing
+        if (!document.getElementById('localGroupTile')) {
+            groupVideoStage.appendChild(localGroupTile);
+        }
+        updateGridCount();
+    }
+
+    function startGroupTimer() {
+        groupCallSeconds = 0;
+        groupCallTimer.textContent = '00:00';
+        if (groupTimerInterval) clearInterval(groupTimerInterval);
+        groupTimerInterval = setInterval(() => {
+            groupCallSeconds++;
+            const mins = String(Math.floor(groupCallSeconds / 60)).padStart(2, '0');
+            const secs = String(groupCallSeconds % 60).padStart(2, '0');
+            groupCallTimer.textContent = `${mins}:${secs}`;
+        }, 1000);
+    }
+
+    function stopGroupTimer() {
+        if (groupTimerInterval) {
+            clearInterval(groupTimerInterval);
+            groupTimerInterval = null;
+        }
+        groupCallSeconds = 0;
     }
 </script>
 
