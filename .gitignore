@@ -13,4 +13,5 @@ venv
 .worktrees
 .superpowers/*
 .pytest_cache/*
-docs/*
+docs/*tmp*/
+*.zip
